@@ -55,6 +55,7 @@ V2rayNG/app/google-services.json
 *.o
 *.pyc
 *.pyo
+.native-cache/
 
 # Ignore files from other IDEs
 .vscode/

@@ -8,13 +8,14 @@ plugins {
 android {
     namespace = "com.v2ray.ang"
     compileSdk = 37
+    ndkVersion = "30.0.16248370"
 
     defaultConfig {
-        applicationId = "com.patterniha.pattng"
+        applicationId = "com.v2ray.ang"
         minSdk = 29
         targetSdk = 37
-        versionCode = 753
-        versionName = (project.findProperty("pattngVersion") as? String)?.takeIf { it.isNotBlank() } ?: "2.3.13"
+        versionCode = 754
+        versionName = (project.findProperty("pattngVersion") as? String)?.takeIf { it.isNotBlank() } ?: "2.3.13-P69.1"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
@@ -40,7 +41,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -52,7 +54,6 @@ android {
     productFlavors {
         create("fdroid") {
             dimension = "distribution"
-            applicationIdSuffix = ".fdroid"
             buildConfigField("String", "DISTRIBUTION", "\"F-Droid\"")
         }
         create("playstore") {

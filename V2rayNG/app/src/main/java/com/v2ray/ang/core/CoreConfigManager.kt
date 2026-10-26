@@ -4,6 +4,7 @@ import android.content.Context
 import android.text.TextUtils
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.google.gson.JsonPrimitive
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.ConfigResult
@@ -144,6 +145,7 @@ object CoreConfigManager {
         val result = ConfigResult(true, configContext.guid, raw)
 
         val json = JsonUtil.parseString(raw)?.takeIf { it.isJsonObject }?.asJsonObject ?: return result
+        normalizeGeoIpReferences(json)
 
         val dependency = AetherDependency.ofCustom(json)
         aetherFailure(context, configContext.guid, dependency)?.let { return it }
@@ -611,7 +613,11 @@ object CoreConfigManager {
         v2rayConfig.aetherCommand = core?.command
         // PattNG: the ECH outbounds of the profiles get their tags and go after every other outbound, as written
         val content = when (val serialized = EchOutbound.serialize(v2rayConfig)) {
-            is EchOutbound.Result.Done -> serialized.content
+            is EchOutbound.Result.Done -> {
+                val json = checkNotNull(JsonUtil.parseString(serialized.content))
+                normalizeGeoIpReferences(json)
+                JsonUtil.toJsonPretty(json).orEmpty()
+            }
             is EchOutbound.Result.Invalid -> return echOutboundFailure(configContext.guid, serialized, when (serialized.error) {
                 EchOutbound.Error.INVALID_JSON ->
                     context.getString(R.string.toast_malformed_json_detail, context.getString(R.string.server_lab_ech_outbound))
@@ -1609,19 +1615,6 @@ object CoreConfigManager {
 
         val rule = JsonUtil.fromJson(JsonUtil.toJson(item), V2rayConfig.RoutingBean.RulesBean::class.java) ?: return
 
-        // Replace specific geoip rules with ext versions
-        rule.ip?.let { ipList ->
-            val updatedIpList = ArrayList<String>()
-            ipList.forEach { ip ->
-                when (ip) {
-                    AppConfig.GEOIP_CN -> updatedIpList.add("ext:${AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT}:cn")
-                    AppConfig.GEOIP_PRIVATE -> updatedIpList.add("ext:${AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT}:private")
-                    else -> updatedIpList.add(ip)
-                }
-            }
-            rule.ip = updatedIpList
-        }
-
         if (SettingsManager.canUseProcessRouting()) {
             // Convert process package names to UIDs
             rule.process?.let { processList ->
@@ -1647,6 +1640,29 @@ object CoreConfigManager {
         // unbuiltRoutingTarget. A latency test, which leaves the targets out, clears the rules.
 
         v2rayConfig.routing.rules.add(rule)
+    }
+
+    /**
+     * Keep generated and previously exported rules independent of the optional CN/private database.
+     * Only the two built-in aliases from older PattNG releases are normalized; user databases,
+     * negation, CIDRs, rule order and policy-group selectors remain as written.
+     */
+    internal fun normalizeGeoIpReferences(config: JsonObject) {
+        val routing = config.get("routing")?.takeIf { it.isJsonObject }?.asJsonObject ?: return
+        val rules = routing.get("rules")?.takeIf { it.isJsonArray }?.asJsonArray ?: return
+        for (element in rules) {
+            val rule = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+            val ips = rule.get("ip")?.takeIf { it.isJsonArray }?.asJsonArray ?: continue
+            for (index in 0 until ips.size()) {
+                val ip = ips[index].takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString ?: continue
+                val standard = when (ip) {
+                    "ext:${AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT}:private" -> AppConfig.GEOIP_PRIVATE
+                    "ext:${AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT}:cn" -> AppConfig.GEOIP_CN
+                    else -> continue
+                }
+                ips.set(index, JsonPrimitive(standard))
+            }
+        }
     }
 
 

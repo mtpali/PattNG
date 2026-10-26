@@ -19,3 +19,19 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Gson stores profiles and sends native-core configurations using DTO field names.
+# Preserve the released JSON schema, including unannotated fields and enum values.
+-keep,allowoptimization class com.v2ray.ang.dto.** { *; }
+-keep,allowoptimization enum com.v2ray.ang.enums.** { *; }
+-keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod
+
+# Gomobile resolves its Java bridge and callback interfaces through JNI.
+-keep class go.** { *; }
+-keep class libv2ray.** { *; }
+-keep class * implements libv2ray.CoreCallbackHandler { *; }
+-keep class * implements libv2ray.ProcessFinder { *; }
+
+# HEV exports JNI symbols with this class and these method names.
+-keep class com.v2ray.ang.service.TProxyService { *; }
+-keep class com.v2ray.ang.service.TProxyService$Companion { *; }
