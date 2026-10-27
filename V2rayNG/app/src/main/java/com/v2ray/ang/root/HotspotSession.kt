@@ -19,6 +19,7 @@ object HotspotSession {
     private fun owner(context: Context) = File(context.filesDir, "${AppConfig.ROOT_RUNTIME_DIR}/hotspot.owner")
 
     @Volatile private var resetJob: kotlinx.coroutines.Job? = null
+    fun isResetting(): Boolean = resetJob?.isActive == true
     suspend fun claim(context: Context): Boolean {
         resetJob?.join()
         return writeOwner(context)

@@ -7,6 +7,9 @@ internal data class TogglePlan(val action: ToggleAction, val ticket: Long = 0)
 
 /** Unknown daemon state requires a bounded stop; it never authorizes another start. */
 internal object ServiceToggle {
+    fun mayStart(ticket: Long?, current: Long, reserved: Boolean, stopping: Boolean): Boolean =
+        !stopping && (ticket == null || (ticket == current && reserved))
+
     fun decide(state: Int?, starting: Boolean, stopping: Boolean): ToggleAction = when {
         stopping -> ToggleAction.Ignore
         starting -> ToggleAction.Stop

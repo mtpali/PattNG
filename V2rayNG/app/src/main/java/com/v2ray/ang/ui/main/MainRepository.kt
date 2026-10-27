@@ -134,7 +134,7 @@ class MainRepository(
     override fun copyText(text: String) { Utils.setClipboard(app, text) }
     override fun linkQRCode(text: String) = com.v2ray.ang.util.QRCodeDecoder.createQRCode(text)
     override fun rootMode() = SettingsManager.isRootMode()
-    override fun vpnHotspot() = MmkvManager.decodeSettingsBool(AppConfig.PREF_ROOT_LAN_SHARING, false)
+    override fun vpnHotspot() = !com.v2ray.ang.root.HotspotSession.isResetting() && MmkvManager.decodeSettingsBool(AppConfig.PREF_ROOT_LAN_SHARING, false)
     override fun setRootMode(enabled: Boolean): Boolean {
         if (enabled && !com.v2ray.ang.root.RootManager.isRootAvailable(forceRefresh = true)) return false
         if (!MmkvManager.encodeSettings(AppConfig.PREF_ROOT_MODE_ENABLE, enabled)) return false

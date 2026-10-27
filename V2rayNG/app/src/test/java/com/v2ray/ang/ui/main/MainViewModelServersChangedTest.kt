@@ -17,6 +17,7 @@ import com.v2ray.ang.dto.entities.SubscriptionCache
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.extension.moveItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +67,11 @@ class MainViewModelServersChangedTest {
         val renamedProfiles = Channel<Pair<String, String>>(Channel.UNLIMITED)
         val renamedGroups = Channel<Pair<String, String>>(Channel.UNLIMITED)
         val rootRequests = Channel<Boolean>(Channel.UNLIMITED)
+        val sortedGroups = Channel<String>(Channel.UNLIMITED)
+        val bulkRequests = Channel<String>(Channel.UNLIMITED)
+        val updateEntered = Channel<Unit>(Channel.UNLIMITED)
+        val updateCount = AtomicInteger()
+        @Volatile var holdUpdates: CountDownLatch? = null
         var usage: Map<String, ProfileTraffic> = emptyMap()
         @Volatile var resetCount = 0
         private var rootEnabled = false
@@ -174,17 +180,25 @@ class MainViewModelServersChangedTest {
         override fun removeInvalidServerByGuid(guid: String) = 0
         override fun removeInvalidServersInGroup(groupId: String) = 0
         override fun clearAllTestDelayResults(guids: List<String>) = Unit
-        override fun sortByTestResultsForSub(subId: String) = Unit
+        override fun sortByTestResultsForSub(subId: String) { sortedGroups.trySend(subId) }
         override fun getSubsList() = listOf(SUB)
         override suspend fun importBatchConfig(server: String?, subscriptionId: String, updateUI: Boolean) = 0 to 0
         override fun updateConfigViaSubAll() = SubscriptionUpdateResult()
-        override fun updateConfigViaSub(subscriptionCache: SubscriptionCache) = SubscriptionUpdateResult()
+        override fun updateConfigViaSub(subscriptionCache: SubscriptionCache): SubscriptionUpdateResult {
+            holdUpdates?.let { held ->
+                updateCount.incrementAndGet()
+                updateEntered.trySend(Unit)
+                held.await(5, TimeUnit.SECONDS)
+                throw CancellationException("Ending the synthetic subscription request")
+            }
+            return SubscriptionUpdateResult()
+        }
         override fun shareNonCustomConfigsToClipboard(guids: List<String>) = 0
         override fun share2QRCode(guid: String): Bitmap? = null
         override fun share2Clipboard(guid: String) = false
         override fun sendMsg2Service(msgId: Int, content: String) = Unit
         override fun queryServiceState() = Unit
-        override fun sendMsg2TestService(msg: TestServiceMessage, requestId: String?) = Unit
+        override fun sendMsg2TestService(msg: TestServiceMessage, requestId: String?) { requestId?.let { bulkRequests.trySend(it) } }
         override fun cancelAllPing() = Unit
         override fun testCurrentServerRealPing(requestId: String) = Unit
         override fun syncSubscriptions() = Unit
@@ -551,7 +565,7 @@ class MainViewModelServersChangedTest {
     }
 
     @Test
-    fun blankPrefixReachesTheRenamerByGroupIdAndClosesTheDialog() = runBlocking {
+    fun blankPrefixReachesTheRenamerByGroupIdAndClosesTheDialog() = runBlocking<Unit> {
         val source = FakeSource().apply { editableSubscription = SubscriptionItem(remarks = "Original") }
         val viewModel = MainViewModel(mock<Application>(), source)
         try {
@@ -564,7 +578,7 @@ class MainViewModelServersChangedTest {
     }
 
     @Test
-    fun emptyGroupNameAndStorageFailureKeepTheDialogAvailableForCorrection() = runBlocking {
+    fun emptyGroupNameAndStorageFailureKeepTheDialogAvailableForCorrection() = runBlocking<Unit> {
         val source = FakeSource().apply { editableSubscription = SubscriptionItem(remarks = "Original") }
         val viewModel = MainViewModel(mock<Application>(), source)
         try {
@@ -587,7 +601,7 @@ class MainViewModelServersChangedTest {
     }
 
     @Test
-    fun missingGroupCannotOpenActionsAndMissingLinkCannotBeShared() = runBlocking {
+    fun missingGroupCannotOpenActionsAndMissingLinkCannotBeShared() = runBlocking<Unit> {
         val source = FakeSource().apply { editableSubscription = SubscriptionItem(remarks = "Original", url = "") }
         val viewModel = MainViewModel(mock<Application>(), source)
         try {
@@ -604,7 +618,7 @@ class MainViewModelServersChangedTest {
     }
 
     @Test
-    fun rootRefusalDoesNotShowAnEnabledSettingAndSuccessRefreshesIt() = runBlocking {
+    fun rootRefusalDoesNotShowAnEnabledSettingAndSuccessRefreshesIt() = runBlocking<Unit> {
         val source = FakeSource().apply { acceptCustomization = false }
         val viewModel = MainViewModel(mock<Application>(), source)
         try {
@@ -621,7 +635,7 @@ class MainViewModelServersChangedTest {
     }
 
     @Test
-    fun usageEventsUpdateRowsByGuidAndResetHidesAllZeroRows() = runBlocking {
+    fun usageEventsUpdateRowsByGuidAndResetHidesAllZeroRows() = runBlocking<Unit> {
         val source = FakeSource()
         val viewModel = MainViewModel(mock<Application>(), source)
         try {
@@ -636,6 +650,47 @@ class MainViewModelServersChangedTest {
             withTimeout(5_000) { while (source.resetCount == 0) delay(20) }
             source.events.send(MainServiceEvent.ProfileTrafficChanged)
             withTimeout(5_000) { viewModel.serverGroupState(SUB).first { it.rows.all { row -> row.usageText == null } } }
+        } finally { viewModel.viewModelScope.cancel() }
+    }
+
+    @Test
+    fun repeatedRefreshesShareOneRequestAndCancellationReleasesTheNextRequest() = runBlocking<Unit> {
+        val latch = CountDownLatch(1)
+        val source = FakeSource().apply {
+            editableSubscription = SubscriptionItem(remarks = "Original")
+            holdUpdates = latch
+        }
+        val viewModel = MainViewModel(mock<Application>(), source)
+        try {
+            viewModel.onAction(MainAction.UpdateGroupSubscription(SUB))
+            withTimeout(5_000) { source.updateEntered.receive() }
+            viewModel.onAction(MainAction.UpdateGroupSubscription(SUB))
+            delay(100)
+            assertEquals(1, source.updateCount.get())
+            latch.countDown()
+            withTimeout(5_000) { viewModel.isLoading.first { !it } }
+            viewModel.onAction(MainAction.UpdateGroupSubscription(SUB))
+            withTimeout(5_000) { source.updateEntered.receive() }
+            assertEquals(2, source.updateCount.get())
+        } finally { latch.countDown(); viewModel.viewModelScope.cancel() }
+    }
+
+    @Test
+    fun completingTestsSortsTheirStoredGroupAndKeepsUsageWithTheSameGuid() = runBlocking<Unit> {
+        val source = FakeSource()
+        val viewModel = MainViewModel(mock<Application>(), source)
+        try {
+            viewModel.awaitServers("a", "b")
+            source.usage = mapOf("b" to ProfileTraffic(2048, 4096))
+            source.events.send(MainServiceEvent.ProfileTrafficChanged)
+            withTimeout(5_000) { viewModel.serverGroupState(SUB).first { group -> group.rows.any { it.guid == "b" && it.usageText != null } } }
+            viewModel.onAction(MainAction.TestRealAllServers)
+            val request = withTimeout(5_000) { source.bulkRequests.receive() }
+            source.events.send(MainServiceEvent.MeasureConfigFinish(request))
+            assertEquals(SUB, withTimeout(5_000) { source.sortedGroups.receive() })
+            assertTrue(source.sortedGroups.tryReceive().isFailure)
+            val rows = withTimeout(5_000) { viewModel.serverGroupState(SUB).first { group -> group.rows.any { it.guid == "b" && it.usageText != null } } }.rows
+            assertNull(rows.first { it.guid == "a" }.usageText)
         } finally { viewModel.viewModelScope.cancel() }
     }
 

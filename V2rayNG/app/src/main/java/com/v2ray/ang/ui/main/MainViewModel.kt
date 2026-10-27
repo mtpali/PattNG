@@ -99,6 +99,7 @@ class MainViewModel(
     // ---------- Groups & cache ----------
     @Volatile private var usageByGuid: Map<String, com.v2ray.ang.dto.entities.ProfileTraffic> = emptyMap()
     private val cacheMutex = Mutex()
+    private val subscriptionRefreshMutex = Mutex()
     private val groupDataCache = mutableMapOf<String, List<ServersCache>>()
     private val groupUiFlows = ConcurrentHashMap<String, MutableStateFlow<ServerGroupUiState>>()
     private val groupServerFlows = ConcurrentHashMap<String, StateFlow<List<ServersCache>>>()
@@ -732,42 +733,45 @@ class MainViewModel(
     }
 
     private fun importConfigViaSub(subId: String) {
+        if (!subscriptionRefreshMutex.tryLock()) return
         launchLoading {
-            withContext(ioDispatcher) {
-                try {
-                    val result = if (subId.isEmpty()) {
-                        dataSource.updateConfigViaSubAll()
-                    } else {
-                        val item = dataSource.getSubscriptionItem(subId) ?: return@withContext
-                        dataSource.updateConfigViaSub(SubscriptionCache(subId, item))
-                    }
-                    when {
-                        result.successCount + result.failureCount + result.skipCount == 0 ->
-                            toast(R.string.title_update_subscription_no_subscription)
+            try {
+                withContext(ioDispatcher) {
+                    try {
+                        val result = if (subId.isEmpty()) {
+                            dataSource.updateConfigViaSubAll()
+                        } else {
+                            val item = dataSource.getSubscriptionItem(subId) ?: return@withContext
+                            dataSource.updateConfigViaSub(SubscriptionCache(subId, item))
+                        }
+                        when {
+                            result.successCount + result.failureCount + result.skipCount == 0 ->
+                                toast(R.string.title_update_subscription_no_subscription)
 
-                        result.successCount > 0 && result.failureCount + result.skipCount == 0 ->
-                            toast(
-                                getQuantityString(
-                                    R.plurals.title_update_config_count,
-                                    result.configCount,
-                                    result.configCount,
+                            result.successCount > 0 && result.failureCount + result.skipCount == 0 ->
+                                toast(
+                                    getQuantityString(
+                                        R.plurals.title_update_config_count,
+                                        result.configCount,
+                                        result.configCount,
+                                    )
                                 )
-                            )
 
-                        else ->
-                            toast(dataSource.getString(R.string.title_update_subscription_result, result.configCount, result.successCount, result.failureCount, result.skipCount))
+                            else ->
+                                toast(dataSource.getString(R.string.title_update_subscription_result, result.configCount, result.successCount, result.failureCount, result.skipCount))
+                        }
+                        if (result.configCount > 0) {
+                            setupGroupTab(forceRefresh = true)
+                            refreshSelectedGuid()
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (e: Exception) {
+                        LogUtil.e(AppConfig.TAG, "Subscription update failed", e)
+                        toastError(R.string.toast_failure)
                     }
-                    if (result.configCount > 0) {
-                        setupGroupTab(forceRefresh = true)
-                        refreshSelectedGuid()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (e: Exception) {
-                    LogUtil.e(AppConfig.TAG, "Subscription update failed", e)
-                    toastError(R.string.toast_failure)
                 }
-            }
+            } finally { subscriptionRefreshMutex.unlock() }
         }
     }
 
@@ -1153,11 +1157,19 @@ class MainViewModel(
     }
 
     private fun onTestsFinished(requestId: String) {
-        if (testRequests.completeBulk(requestId) == null) return
+        val completed = testRequests.completeBulk(requestId) ?: return
         resetTestStatus()
         viewModelScope.launch(ioDispatcher) {
-            cacheMutex.withLock { groupDataCache.clear() }
-            reloadAllGroups(_uiState.value.groups.map { it.id })
+            try {
+                val groups = if (completed.groupId.isEmpty()) dataSource.getSubsList() else listOf(completed.groupId)
+                groups.forEach(dataSource::sortByTestResultsForSub)
+                cacheMutex.withLock { groupDataCache.clear() }
+                reloadAllGroups(_uiState.value.groups.map { it.id })
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(customizationFailure = customizationFailures.incrementAndGet()) }
+                LogUtil.e(AppConfig.TAG, "Main tests: sorting completed results failed, group=${completed.groupId}", e)
+            }
         }
     }
 

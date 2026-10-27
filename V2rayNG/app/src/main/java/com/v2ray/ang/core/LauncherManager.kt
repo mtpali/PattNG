@@ -38,9 +38,11 @@ object LauncherManager {
 
     internal suspend fun planToggle(context: Context): TogglePlan = toggleMutex.withLock {
         val state = if (reservedStart || startJob?.isActive == true || stopping) null else MessageHelper.queryServiceState(context)
-        val action = ServiceToggle.decide(state, reservedStart || startJob?.isActive == true, stopping)
-        val ticket = if (action == ToggleAction.Start) epoch.incrementAndGet().also { reservedStart = true } else 0L
-        TogglePlan(action, ticket)
+        synchronized(commandLock) {
+            val action = ServiceToggle.decide(state, reservedStart || startJob?.isActive == true, stopping)
+            val ticket = if (action == ToggleAction.Start) epoch.incrementAndGet().also { reservedStart = true } else 0L
+            TogglePlan(action, ticket)
+        }
     }
 
     internal fun cancelStart(ticket: Long) {
@@ -59,7 +61,7 @@ object LauncherManager {
     internal suspend fun startReservedService(context: Context, ticket: Long) { dispatchStart(context, null, ticket).join() }
 
     private fun dispatchStart(context: Context, guid: String?, reservedTicket: Long?): kotlinx.coroutines.Job = synchronized(commandLock) {
-        if (stopping || (reservedTicket != null && epoch.get() != reservedTicket)) {
+        if (!ServiceToggle.mayStart(reservedTicket, epoch.get(), reservedStart, stopping)) {
             return@synchronized kotlinx.coroutines.Job().apply { complete() }
         }
         startJob?.takeIf { it.isActive }?.let { return@synchronized it }

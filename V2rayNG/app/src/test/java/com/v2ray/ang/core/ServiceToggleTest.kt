@@ -20,6 +20,13 @@ class ServiceToggleTest {
     @Test fun repeatedStopCannotStartAnotherSession() {
         assertEquals(ToggleAction.Ignore, ServiceToggle.decide(0, false, true))
     }
+    @Test fun permissionCallbacksCannotReplayConsumedOrCancelledStarts() {
+        assertTrue(ServiceToggle.mayStart(7L, 7L, true, false))
+        assertFalse(ServiceToggle.mayStart(7L, 7L, false, false))
+        assertFalse(ServiceToggle.mayStart(7L, 8L, true, false))
+        assertFalse(ServiceToggle.mayStart(7L, 7L, true, true))
+        assertTrue(ServiceToggle.mayStart(null, 7L, false, false))
+    }
     @Test fun onlyOwnedDaemonMayBeKilled() {
         assertTrue(DaemonIdentity.owned(20, 1001, "com.v2ray.ang:daemon", 10, 1001, "com.v2ray.ang"))
         assertFalse(DaemonIdentity.owned(10, 1001, "com.v2ray.ang:daemon", 10, 1001, "com.v2ray.ang"))
