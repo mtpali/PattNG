@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.res.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
@@ -27,13 +28,14 @@ fun EditorOutcomeEffect(
     val outcome by viewModel.outcome.collectAsStateWithLifecycle()
     BackHandler(enabled = busy || outcome.closesScreen) {}
     val context = LocalContext.current
+    val resources = LocalResources.current
     LaunchedEffect(outcome) {
         val result = outcome ?: return@LaunchedEffect
         viewModel.onOutcomeHandled(result)
         when (result) {
             is EditorOutcome.Refused -> context.toast(
-                if (result.args.isEmpty()) context.getString(result.message)
-                else context.getString(result.message, *result.args.toTypedArray())
+                if (result.args.isEmpty()) resources.getString(result.message)
+                else resources.getString(result.message, *result.args.toTypedArray())
             )
 
             is EditorOutcome.Saved -> {
