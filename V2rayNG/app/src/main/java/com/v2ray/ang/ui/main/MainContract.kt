@@ -37,6 +37,7 @@ data class MainUiState(
     val rootMode: Boolean = false,
     val vpnHotspot: Boolean = false,
     val groupDialog: GroupDialogState? = null,
+    val customizationFailure: Int? = null,
     val moveRefusal: Int? = null
 )
 
@@ -50,6 +51,7 @@ sealed interface MainAction {
     data object Initialize : MainAction
     data class ShowGroupDialog(val groupId: String, val kind: GroupDialogKind) : MainAction
     data object DismissGroupDialog : MainAction
+    data class CustomizationFailureShown(val failure: Int) : MainAction
     data class RenameGroup(val groupId: String, val name: String) : MainAction
     data class RenameProfiles(val groupId: String, val prefix: String) : MainAction
     data class DeleteGroup(val groupId: String) : MainAction

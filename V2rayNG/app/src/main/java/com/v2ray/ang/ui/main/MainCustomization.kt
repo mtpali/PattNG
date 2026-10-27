@@ -135,12 +135,19 @@ internal fun Modifier.subscriptionGestures(id: String, label: String, onMenu: ()
                     if (event == null) {
                         down.consume()
                         onMenu()
+                        do {
+                            val released = awaitPointerEvent()
+                            released.changes.forEach { it.consume() }
+                        } while (released.changes.any { it.pressed })
                         break
                     }
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                     if (!change.pressed) break
                     val dx = change.position.x - last.x
                     elapsed = change.uptimeMillis - down.uptimeMillis
+                    if (!dragging && (change.isConsumed ||
+                        (elapsed < android.view.ViewConfiguration.getTapTimeout() &&
+                            (change.position - down.position).getDistance() > viewConfiguration.touchSlop))) break
                     if (elapsed >= android.view.ViewConfiguration.getTapTimeout()) {
                         distance += dx
                         if (abs(distance) > viewConfiguration.touchSlop) dragging = true

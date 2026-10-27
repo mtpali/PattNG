@@ -223,6 +223,8 @@ object AppConfig {
     const val DEFAULT_MUX_XUDP_CONCURRENCY = "8"
 
     /** Message constants for communication. */
+    const val EXTRA_SERVICE_START_TOKEN = "serviceStartToken"
+    const val CACHE_SERVICE_START_TOKEN = "service_start_token"
     const val MSG_PROFILE_TRAFFIC = 84
     const val MSG_RESET_PROFILE_TRAFFIC = 85
     const val MSG_QUERY_STATE = 83

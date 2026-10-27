@@ -13,7 +13,6 @@ import java.util.Locale
 object AppLocaleManager {
     fun initialize(context: Context) {
         Locale.setDefault(Locale.ENGLISH)
-        MmkvManager.encodeSettings(AppConfig.PREF_LANGUAGE, "en")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val manager = context.getSystemService(LocaleManager::class.java)
             if (manager.applicationLocales != LocaleList(Locale.ENGLISH)) manager.applicationLocales = LocaleList(Locale.ENGLISH)

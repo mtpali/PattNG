@@ -28,6 +28,7 @@ object LauncherManager {
     // Application-owned commands must finish even when a shortcut activity closes.
     private val commandScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
     private val toggleMutex = kotlinx.coroutines.sync.Mutex()
+    private val dispatchMutex = kotlinx.coroutines.sync.Mutex()
     private val epoch = java.util.concurrent.atomic.AtomicLong()
     private val commandLock = Any()
     @Volatile private var reservedStart = false
@@ -68,7 +69,11 @@ object LauncherManager {
         commandScope.launch {
             try {
                 guid?.let(MmkvManager::setSelectServer)
-                if (epoch.get() == ticket && !stopping) startContextService(app) { epoch.get() == ticket && !stopping }
+                dispatchMutex.withLock {
+                    if (epoch.get() == ticket && !stopping) {
+                        startContextService(app, Utils.getUuid()) { epoch.get() == ticket && !stopping }
+                    }
+                }
             } catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "Launcher: service dispatch failed", e)
                 android.os.Handler(android.os.Looper.getMainLooper()).post { app.toast(R.string.toast_services_failure) }
@@ -80,32 +85,50 @@ object LauncherManager {
 
     fun stopService(context: Context, onFinished: (() -> Unit)? = null) {
         val app = context.applicationContext
-        synchronized(commandLock) {
+        val pendingStart = synchronized(commandLock) {
             onFinished?.let(stopCallbacks::add)
             if (stopping) return
+            val pending = reservedStart || startJob?.isActive == true
             stopping = true
             epoch.incrementAndGet()
             reservedStart = false
             startJob?.cancel()
+            pending
         }
-        MessageHelper.sendMsg2Service(app, AppConfig.MSG_STATE_STOP, "")
         commandScope.launch {
             var stopped = false
             try {
-                val original = daemonProcess(app)
-                val originalStart = original?.let { processStart(it.pid) }
-                val state = MessageHelper.queryServiceState(app)
-                stopped = state == 0 || state == AppConfig.MSG_STATE_NOT_RUNNING
-                if (!stopped) {
-                    kotlinx.coroutines.delay(3_000L)
-                    val after = MessageHelper.queryServiceState(app)
-                    stopped = after == 0 || after == AppConfig.MSG_STATE_NOT_RUNNING
-                    if (!stopped && original != null && originalStart != null) {
-                        val current = daemonProcess(app)
-                        if (current?.pid == original.pid && processStart(current.pid) == originalStart) {
-                            android.os.Process.killProcess(current.pid)
-                            repeat(5) { if (processStart(current.pid) != originalStart) stopped = true else kotlinx.coroutines.delay(100L) }
+                dispatchMutex.withLock {
+                    check(MmkvManager.encodeSettings(AppConfig.CACHE_SERVICE_START_TOKEN, ""))
+                    MessageHelper.sendMsg2Service(app, AppConfig.MSG_STATE_STOP, "")
+                }
+                var original = daemonProcess(app)
+                var originalStart = original?.let { processStart(it.pid) }
+                val deadline = android.os.SystemClock.elapsedRealtime() + 3_000L
+                var absentSince: Long? = null
+                while (android.os.SystemClock.elapsedRealtime() < deadline && !stopped) {
+                    val state = MessageHelper.queryServiceState(app)
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (state == 0 || state == AppConfig.MSG_STATE_NOT_RUNNING) {
+                        if (absentSince == null) absentSince = now
+                        stopped = !pendingStart || now - absentSince >= 500L
+                    } else {
+                        absentSince = null
+                        MessageHelper.sendMsg2Service(app, AppConfig.MSG_STATE_STOP, "")
+                        if (original == null) {
+                            original = daemonProcess(app)
+                            originalStart = original?.let { processStart(it.pid) }
                         }
+                    }
+                    if (!stopped) kotlinx.coroutines.delay(100L)
+                }
+                val victim = original
+                val birth = originalStart
+                if (!stopped && victim != null && birth != null) {
+                    val current = daemonProcess(app)
+                    if (current?.pid == victim.pid && processStart(current.pid) == birth) {
+                        android.os.Process.killProcess(current.pid)
+                        repeat(5) { if (processStart(current.pid) != birth) stopped = true else kotlinx.coroutines.delay(100L) }
                     }
                 }
             } catch (e: Exception) {
@@ -146,7 +169,7 @@ object LauncherManager {
             || Utils.isValidUrl(config.server)
 
     @Throws(Exception::class)
-    private fun startContextService(context: Context, mayStart: () -> Boolean) {
+    private fun startContextService(context: Context, token: String, mayStart: () -> Boolean) {
         // Note: isRunning check is removed here to avoid loading Native libraries in the UI process.
         // The check is performed in CoreServiceManager when the service starts in the daemon process.
 
@@ -198,7 +221,11 @@ object LauncherManager {
         }
 
         try {
-            if (mayStart()) ContextCompat.startForegroundService(context, intent)
+            if (mayStart()) {
+                check(MmkvManager.encodeSettings(AppConfig.CACHE_SERVICE_START_TOKEN, token))
+                intent.putExtra(AppConfig.EXTRA_SERVICE_START_TOKEN, token)
+                ContextCompat.startForegroundService(context, intent)
+            }
         } catch (e: SecurityException) {
             LogUtil.e(AppConfig.TAG, "LauncherManager: Missing permission to start foreground service", e)
             throw IllegalStateException(e.message ?: e.javaClass.simpleName, e)

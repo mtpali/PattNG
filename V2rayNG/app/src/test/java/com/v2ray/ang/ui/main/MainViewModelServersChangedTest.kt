@@ -4,9 +4,13 @@ import android.app.Application
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import com.v2ray.ang.dto.SubscriptionUpdateResult
 import com.v2ray.ang.dto.TestServiceMessage
 import com.v2ray.ang.dto.entities.ProfileItem
+import com.v2ray.ang.dto.entities.ProfileTraffic
+import com.v2ray.ang.R
+import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.dto.entities.ServerAffiliationInfo
 import com.v2ray.ang.dto.entities.ServersCache
 import com.v2ray.ang.dto.entities.SubscriptionCache
@@ -14,6 +18,7 @@ import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.extension.moveItem
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -30,6 +35,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
@@ -55,6 +61,27 @@ class MainViewModelServersChangedTest {
         @Volatile
         var showAllGroup = false
         private var selectedSubscriptionId = ""
+        var editableSubscription: SubscriptionItem? = null
+        var acceptCustomization = true
+        val renamedProfiles = Channel<Pair<String, String>>(Channel.UNLIMITED)
+        val renamedGroups = Channel<Pair<String, String>>(Channel.UNLIMITED)
+        val rootRequests = Channel<Boolean>(Channel.UNLIMITED)
+        var usage: Map<String, ProfileTraffic> = emptyMap()
+        @Volatile var resetCount = 0
+        private var rootEnabled = false
+        override fun profileTraffic() = usage
+        override fun resetProfileUsage() { usage = emptyMap(); resetCount++ }
+        override fun renameProfiles(groupId: String, prefix: String) { renamedProfiles.trySend(groupId to prefix); check(acceptCustomization) }
+        override fun renameGroup(groupId: String, name: String): Boolean {
+            renamedGroups.trySend(groupId to name)
+            return acceptCustomization && name.isNotBlank()
+        }
+        override fun rootMode() = rootEnabled
+        override fun setRootMode(enabled: Boolean): Boolean {
+            rootRequests.trySend(enabled)
+            if (acceptCustomization) rootEnabled = enabled
+            return acceptCustomization
+        }
 
         /** The moves stored, as the group and the two guids. */
         val moves: MutableList<Triple<String, String, String>> = Collections.synchronizedList(mutableListOf())
@@ -88,7 +115,7 @@ class MainViewModelServersChangedTest {
         override fun getDoubleColumnDisplay() = false
         override fun isGroupAllDisplayEnabled() = showAllGroup
         override fun getString(resId: Int) = ""
-        override fun getString(resId: Int, vararg formatArgs: Any) = ""
+        override fun getString(resId: Int, vararg formatArgs: Any) = if (resId == R.string.profile_usage) formatArgs.joinToString(" / ") else ""
         override fun getStringArray(resId: Int) = emptyList<String>()
         override fun getSubscriptions() = buildList {
             if (showAllGroup) add(SubscriptionCache("", SubscriptionItem(remarks = "All")))
@@ -106,7 +133,7 @@ class MainViewModelServersChangedTest {
                 readingHeld.complete(Unit)
                 gate.await(5, TimeUnit.SECONDS)
             }
-            return null
+            return editableSubscription.takeIf { id == SUB }
         }
         /** Shut by a test, the next reading of a list waits on it, holding the group's load lock, see [listReadHeld]. */
         @Volatile
@@ -165,16 +192,27 @@ class MainViewModelServersChangedTest {
         override fun close() = Unit
     }
 
+    private var priorLogPriority = Int.MIN_VALUE
+
     @OptIn(ExperimentalCoroutinesApi::class)
     @BeforeEach
     fun setMainDispatcher() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
+        LogUtil::class.java.getDeclaredField("cachedMinPriority").apply {
+            isAccessible = true
+            priorLogPriority = getInt(null)
+            setInt(null, Int.MAX_VALUE)
+        }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @AfterEach
     fun resetMainDispatcher() {
         Dispatchers.resetMain()
+        LogUtil::class.java.getDeclaredField("cachedMinPriority").apply {
+            isAccessible = true
+            setInt(null, priorLogPriority)
+        }
     }
 
     @Test
@@ -510,6 +548,95 @@ class MainViewModelServersChangedTest {
         // Shown anew once the move is stored, filtered: the move kept, b filtered out.
         viewModel.awaitServers("c", "a")
         assertEquals(listOf("c", "a", "b"), source.serverGuids)
+    }
+
+    @Test
+    fun blankPrefixReachesTheRenamerByGroupIdAndClosesTheDialog() = runBlocking {
+        val source = FakeSource().apply { editableSubscription = SubscriptionItem(remarks = "Original") }
+        val viewModel = MainViewModel(mock<Application>(), source)
+        try {
+            viewModel.onAction(MainAction.ShowGroupDialog(SUB, GroupDialogKind.Profiles))
+            withTimeout(5_000) { viewModel.uiState.first { it.groupDialog?.groupId == SUB } }
+            viewModel.onAction(MainAction.RenameProfiles(SUB, ""))
+            assertEquals(SUB to "", withTimeout(5_000) { source.renamedProfiles.receive() })
+            withTimeout(5_000) { viewModel.uiState.first { it.groupDialog == null } }
+        } finally { viewModel.viewModelScope.cancel() }
+    }
+
+    @Test
+    fun emptyGroupNameAndStorageFailureKeepTheDialogAvailableForCorrection() = runBlocking {
+        val source = FakeSource().apply { editableSubscription = SubscriptionItem(remarks = "Original") }
+        val viewModel = MainViewModel(mock<Application>(), source)
+        try {
+            viewModel.onAction(MainAction.ShowGroupDialog(SUB, GroupDialogKind.Rename))
+            withTimeout(5_000) { viewModel.uiState.first { it.groupDialog?.kind == GroupDialogKind.Rename } }
+            viewModel.onAction(MainAction.RenameGroup(SUB, ""))
+            assertEquals(SUB to "", withTimeout(5_000) { source.renamedGroups.receive() })
+            withTimeout(5_000) { viewModel.uiState.first { it.customizationFailure != null } }
+            assertEquals(GroupDialogKind.Rename, viewModel.uiState.value.groupDialog?.kind)
+            source.acceptCustomization = false
+            viewModel.onAction(MainAction.RenameGroup(SUB, "New title"))
+            assertEquals(SUB to "New title", withTimeout(5_000) { source.renamedGroups.receive() })
+            delay(100)
+            assertEquals(SUB, viewModel.uiState.value.groupDialog?.groupId)
+            source.acceptCustomization = true
+            viewModel.onAction(MainAction.RenameGroup(SUB, "New title"))
+            withTimeout(5_000) { source.renamedGroups.receive() }
+            withTimeout(5_000) { viewModel.uiState.first { it.groupDialog == null } }
+        } finally { viewModel.viewModelScope.cancel() }
+    }
+
+    @Test
+    fun missingGroupCannotOpenActionsAndMissingLinkCannotBeShared() = runBlocking {
+        val source = FakeSource().apply { editableSubscription = SubscriptionItem(remarks = "Original", url = "") }
+        val viewModel = MainViewModel(mock<Application>(), source)
+        try {
+            viewModel.onAction(MainAction.ShowGroupDialog("deleted-group", GroupDialogKind.Menu))
+            delay(100)
+            assertNull(viewModel.uiState.value.groupDialog)
+            viewModel.onAction(MainAction.ShowGroupDialog(SUB, GroupDialogKind.Link))
+            withTimeout(5_000) { viewModel.uiState.first { it.groupDialog?.kind == GroupDialogKind.Link } }
+            viewModel.onAction(MainAction.CopyGroupLink(SUB, true))
+            delay(100)
+            assertNull(viewModel.uiState.value.shareQRCodeBitmap)
+            assertEquals(GroupDialogKind.Link, viewModel.uiState.value.groupDialog?.kind)
+        } finally { viewModel.viewModelScope.cancel() }
+    }
+
+    @Test
+    fun rootRefusalDoesNotShowAnEnabledSettingAndSuccessRefreshesIt() = runBlocking {
+        val source = FakeSource().apply { acceptCustomization = false }
+        val viewModel = MainViewModel(mock<Application>(), source)
+        try {
+            assertTrue(!viewModel.uiState.value.rootMode)
+            viewModel.onAction(MainAction.SetRootMode(true))
+            assertEquals(true, withTimeout(5_000) { source.rootRequests.receive() })
+            delay(100)
+            assertTrue(!viewModel.uiState.value.rootMode)
+            source.acceptCustomization = true
+            viewModel.onAction(MainAction.SetRootMode(true))
+            withTimeout(5_000) { source.rootRequests.receive() }
+            withTimeout(5_000) { viewModel.uiState.first { it.rootMode } }
+        } finally { viewModel.viewModelScope.cancel() }
+    }
+
+    @Test
+    fun usageEventsUpdateRowsByGuidAndResetHidesAllZeroRows() = runBlocking {
+        val source = FakeSource()
+        val viewModel = MainViewModel(mock<Application>(), source)
+        try {
+            viewModel.awaitServers("a", "b")
+            source.usage = mapOf("b" to ProfileTraffic(1024, 2048))
+            source.events.send(MainServiceEvent.ProfileTrafficChanged)
+            val populated = withTimeout(5_000) {
+                viewModel.serverGroupState(SUB).first { group -> group.rows.any { it.guid == "b" && it.usageText != null } }
+            }
+            assertNull(populated.rows.first { it.guid == "a" }.usageText)
+            viewModel.onAction(MainAction.ResetProfileUsage)
+            withTimeout(5_000) { while (source.resetCount == 0) delay(20) }
+            source.events.send(MainServiceEvent.ProfileTrafficChanged)
+            withTimeout(5_000) { viewModel.serverGroupState(SUB).first { it.rows.all { row -> row.usageText == null } } }
+        } finally { viewModel.viewModelScope.cancel() }
     }
 
     private fun MainViewModel.shownServers(groupId: String = SUB) = serverGroupState(groupId).value.servers.map(ServersCache::guid)

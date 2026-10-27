@@ -289,8 +289,7 @@
             android:foregroundServiceType="specialUse"
             android:icon="@drawable/ic_stat_name"
             android:label="@string/app_tile_name"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            android:process=":daemon">
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>

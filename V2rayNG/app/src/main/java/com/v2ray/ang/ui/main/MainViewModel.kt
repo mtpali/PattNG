@@ -115,6 +115,7 @@ class MainViewModel(
 
     /** PattNG: the number the last refusal of a move to be told got, see [MainUiState.moveRefusal]. */
     private val moveRefusals = AtomicInteger()
+    private val customizationFailures = AtomicInteger()
 
     /**
      * PattNG: per group, the moves shown, and those settled, stored or refused, see [storeMove]. A reading of a group
@@ -381,6 +382,9 @@ class MainViewModel(
             is MainAction.Search -> filterConfig(action.query)
             is MainAction.ImportBatchConfig -> importBatchConfig(action.configText)
             MainAction.LocateHandled -> consumeLocateTarget()
+            is MainAction.CustomizationFailureShown -> _uiState.update {
+                if (it.customizationFailure == action.failure) it.copy(customizationFailure = null) else it
+            }
             is MainAction.MoveRefusalShown -> _uiState.update {
                 if (it.moveRefusal == action.refusal) it.copy(moveRefusal = null) else it
             }
@@ -580,9 +584,9 @@ class MainViewModel(
                     is MainAction.MoveGroup -> check(dataSource.moveGroup(action.groupId, action.direction))
                     is MainAction.CopyGroupLink -> {
                         val link = dataSource.getSubscriptionItem(action.groupId)?.url.orEmpty()
-                        if (link.isBlank()) { toastError(R.string.group_missing_link); return@launch }
+                        if (link.isBlank()) return@launch
                         if (action.qr) {
-                            val bitmap = dataSource.linkQRCode(link)
+                            val bitmap = checkNotNull(dataSource.linkQRCode(link))
                             _uiState.update { it.copy(shareQRCodeBitmap = bitmap, groupDialog = null) }
                         } else dataSource.copyText(link)
                         return@launch
@@ -596,8 +600,8 @@ class MainViewModel(
                 setupGroupTab(forceRefresh = true)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                _uiState.update { it.copy(customizationFailure = customizationFailures.incrementAndGet()) }
                 LogUtil.e(AppConfig.TAG, "Main customization: ${action::class.java.simpleName} failed", e)
-                toastError(R.string.toast_failure)
             }
         }
     }

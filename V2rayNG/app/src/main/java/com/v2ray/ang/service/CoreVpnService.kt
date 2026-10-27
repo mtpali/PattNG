@@ -64,7 +64,7 @@ class CoreVpnService : VpnService(), ServiceControl {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         NotificationManager.ensureForeground()
         // Android-owned null / SERVICE_INTERFACE starts enter the same guarded setup.
-        lifecycle.start {
+        lifecycle.start(intent?.getStringExtra(AppConfig.EXTRA_SERVICE_START_TOKEN)) {
             if (!setupVpnService()) false else {
                 startService()
                 isRunning

@@ -43,7 +43,7 @@ class CoreRootService : Service(), ServiceControl {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         NotificationManager.ensureForeground()
-        lifecycle.start {
+        lifecycle.start(intent?.getStringExtra(AppConfig.EXTRA_SERVICE_START_TOKEN)) {
             CoreServiceManager.startCoreLoop(null) && RootProxyManager.start(this)
         }
         return START_NOT_STICKY

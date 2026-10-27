@@ -57,7 +57,8 @@ class AmneziaDnsTest {
         val disabled = CoreOutboundBuilder.toOutboundWireguard(source, false)!!.settings!!
         assertEquals(listOf("1.1.1.1", "2606:4700:4700::1111"), enabled.remoteDNS)
         assertEquals(listOf("1.1.1.1"), disabled.remoteDNS)
-        assertEquals(enabled.dnsServers, disabled.dnsServers)
+        assertEquals(listOf("1.1.1.1", "2606:4700:4700::1111"), enabled.dnsServers)
+        assertEquals(listOf("1.1.1.1"), disabled.dnsServers)
     }
 
     @Test fun idleKeepaliveAppliesOnlyToAmneziaWithoutAnExplicitValue() {

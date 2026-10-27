@@ -62,6 +62,11 @@ jobs:
           AWG_TEST_ARM64=1 bash scripts/build-amnezia-libv2ray.sh "$PATTNG_NATIVE_CACHE/awg/libv2ray.aar"
       - name: Stage the ARM64 AmneziaWG core
         run: cp .native-cache/awg/libv2ray.aar V2rayNG/app/libs/libv2ray.aar
+      - uses: actions/cache/save@v6
+        if: steps.awg-cache.outputs.cache-hit != 'true'
+        with:
+          path: .native-cache/awg/libv2ray.aar
+          key: awg-p69-arm64-${{ hashFiles('core/patches/*.patch', 'scripts/build-amnezia-libv2ray.sh', 'AndroidLibXrayLite/go.*') }}
       - name: Build HEV from the pinned source
         run: |
           export NDK_HOME="$ANDROID_HOME/ndk/30.0.16248370"

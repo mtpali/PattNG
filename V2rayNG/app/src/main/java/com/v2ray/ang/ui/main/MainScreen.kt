@@ -66,6 +66,14 @@ fun MainScreen(
         }
     }
 
+    val customizationFailure = uiState.customizationFailure
+    LaunchedEffect(customizationFailure) {
+        if (customizationFailure != null) {
+            context.toastError(failureText)
+            onAction(MainAction.CustomizationFailureShown(customizationFailure))
+        }
+    }
+
     val isDarkTheme = LocalDarkTheme.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()

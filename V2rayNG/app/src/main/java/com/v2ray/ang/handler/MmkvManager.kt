@@ -412,7 +412,10 @@ object MmkvManager {
                 if (value == null) { store.removeValueForKey(key); !store.containsKey(key) }
                 else store.encode(key, value)
             },
-            { (_, key), error -> LogUtil.e(TAG, "Profile transaction: failed to restore record $key", error) })
+            { (_, key), error ->
+                val message = "Profile transaction: failed to restore record $key"
+                if (error != null) LogUtil.e(TAG, message, error) else LogUtil.e(TAG, message)
+            })
     }
 
     /** Keeps usage independent of latency results, under the cross-process profile lock. */
@@ -438,9 +441,8 @@ object MmkvManager {
     fun renameServerProfiles(subscriptionId: String, prefix: String) = withProfileIndexLock {
         val guids = if (subscriptionId.isEmpty()) decodeAllServerList() else decodeServerList(subscriptionId)
         val changes = linkedMapOf<Pair<MMKV, String>, String?>()
-        guids.forEachIndexed { index, guid ->
-            val json = profileFullStorage.decodeString(guid)?.let(JsonUtil::parseString) ?: return@forEachIndexed
-            val name = prefix.trim().let { if (it.isEmpty()) "${index + 1}" else "$it ${index + 1}" }
+        ProfileBatchRenamer.plan(prefix, guids).forEach { (guid, name) ->
+            val json = profileFullStorage.decodeString(guid)?.let(JsonUtil::parseString) ?: return@forEach
             json.addProperty("remarks", name)
             changes[profileFullStorage to guid] = json.toString()
             serverRawStorage.decodeString(guid)?.let { raw ->

@@ -32,7 +32,7 @@ class CoreProxyOnlyService : Service(), ServiceControl {
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         NotificationManager.ensureForeground()
-        lifecycle.start { CoreServiceManager.startCoreLoop(null) }
+        lifecycle.start(intent?.getStringExtra(AppConfig.EXTRA_SERVICE_START_TOKEN)) { CoreServiceManager.startCoreLoop(null) }
         return START_NOT_STICKY
     }
 

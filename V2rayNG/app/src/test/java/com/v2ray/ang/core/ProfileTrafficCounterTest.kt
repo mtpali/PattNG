@@ -38,4 +38,9 @@ class ProfileTrafficCounterTest {
             OutboundTrafficStat("proxy", "downlink", -99), OutboundTrafficStat("proxy", "invalid", 999))
         assertEquals(ProfileTraffic(Long.MAX_VALUE, 0), ProfileTrafficCounter.total(stats, setOf("proxy")))
     }
+
+    @Test fun nullTagsAndOptionalDetourFieldsDoNotBreakValidCustomProfiles() {
+        val prepared = ProfileTrafficCounter.prepare("""{"outbounds":[{"tag":null,"protocol":"vless","proxySettings":{"tag":null},"streamSettings":{"sockopt":{"dialerProxy":null}}}]}""")
+        assertEquals(setOf("usage-outbound-0"), ProfileTrafficCounter.tags(prepared))
+    }
 }

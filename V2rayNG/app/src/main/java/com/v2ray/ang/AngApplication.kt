@@ -11,8 +11,13 @@ import com.v2ray.ang.handler.AppLocaleManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.compose.ThemeManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class AngApplication : Application() {
+    private val initializationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     companion object {
         lateinit var application: AngApplication
     }
@@ -46,8 +51,11 @@ class AngApplication : Application() {
 
         // Ensure critical preference defaults are present in MMKV early
         SettingsManager.initApp(this)
-        MmkvManager.encodeSettings(AppConfig.PREF_IS_BOOTED, false)
-        MmkvManager.encodeSettings(AppConfig.PREF_DOUBLE_COLUMN_DISPLAY, false)
+        initializationScope.launch {
+            MmkvManager.encodeSettings(AppConfig.PREF_IS_BOOTED, false)
+            MmkvManager.encodeSettings(AppConfig.PREF_DOUBLE_COLUMN_DISPLAY, false)
+            MmkvManager.encodeSettings(AppConfig.PREF_LANGUAGE, "en")
+        }
 
         // PattNG: the Aether cores of this process listen on the port of the settings.
         AetherCoreManager.listenPortSource = SettingsManager::getAetherListenPort

@@ -5,6 +5,7 @@ import android.app.Service
 import android.os.Process
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.core.CoreServiceManager
+import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,11 @@ internal class ServiceLifecycleGate {
     @Synchronized fun mayStart(): Boolean = starting && !stopping
 }
 
+/** A missing token is Android's always-on/null-intent path, which stays supported. */
+internal object ServiceStartToken {
+    fun valid(requested: String?, current: String?): Boolean = requested == null || requested == current
+}
+
 /** Owns setup and teardown in every run mode, including their cancellation ordering. */
 internal class ServiceLifecycle(private val service: Service, private val cleanup: () -> Unit) {
     private val gate = ServiceLifecycleGate()
@@ -45,12 +51,13 @@ internal class ServiceLifecycle(private val service: Service, private val cleanu
     private var shutdown: Job? = null
     @Volatile private var cleanupSucceeded = false
 
-    fun start(block: () -> Boolean) {
+    fun start(requestedToken: String? = null, block: () -> Boolean) {
         if (!gate.start()) return
         CoreServiceManager.markStarting()
         setup = scope.launch {
             try {
-                if (gate.mayStart() && !block()) stop()
+                val valid = ServiceStartToken.valid(requestedToken, MmkvManager.decodeSettingsString(AppConfig.CACHE_SERVICE_START_TOKEN))
+                if (!valid || (gate.mayStart() && !block())) stop()
             } catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "${service.javaClass.simpleName}: setup failed", e)
                 stop()

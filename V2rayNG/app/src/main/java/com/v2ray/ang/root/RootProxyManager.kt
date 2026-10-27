@@ -149,7 +149,9 @@ object RootProxyManager {
             "[ \"\$(cat '$directory/runtime.token' 2>/dev/null)\" = '$token' ] || exit 0\n" + buildTeardown(context)
         )
         val lanCleanup = File(runDir, "guard_lan_cleanup.sh")
-        if (lanShare) lanCleanup.writeText(buildLanTeardown()) else lanCleanup.delete()
+        if (lanShare) lanCleanup.writeText(
+            "[ \"\$(cat '$directory/runtime.token' 2>/dev/null)\" = '$token' ] || exit 0\n" + buildLanTeardown()
+        ) else lanCleanup.delete()
         File(runDir, "guard_runtime.sh").writeText(RootRuntimeGuard.script(corePid,
             HotspotSession.startTime(corePid), directory, token, captureDeviceTraffic))
 

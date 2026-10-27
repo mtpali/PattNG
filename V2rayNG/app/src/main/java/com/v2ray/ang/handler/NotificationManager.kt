@@ -34,7 +34,9 @@ object NotificationManager {
 
     private var lastQueryTime = 0L
     private var mBuilder: NotificationCompat.Builder? = null
-    private var speedNotificationJob: Job? = null
+    @Volatile private var speedNotificationJob: Job? = null
+
+    internal fun isSamplingTraffic(): Boolean = speedNotificationJob?.isActive == true
     private var mNotificationManager: NotificationManager? = null
     private var statusLine: String? = null
     private var lastContentText: String? = null

@@ -419,7 +419,7 @@ object CoreServiceManager {
         usageJob = controlScope.launch {
             while (isActive) {
                 delay(3_000L)
-                if (!(screenOff && currentConfig?.isAmneziaWG == true)) {
+                if (!(screenOff && currentConfig?.isAmneziaWG == true) && !NotificationManager.isSamplingTraffic()) {
                     try { queryAllOutboundTrafficStats() }
                     catch (e: Exception) { LogUtil.e(AppConfig.TAG, "Core usage: sampling failed, guid=$trafficGuid", e) }
                 }

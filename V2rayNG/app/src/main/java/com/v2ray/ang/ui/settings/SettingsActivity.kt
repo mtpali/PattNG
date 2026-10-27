@@ -151,7 +151,6 @@ fun SettingsScreen(
 
     var speedEnabled by rememberMmkvBool(AppConfig.PREF_SPEED_ENABLED, false)
     var confirmRemove by rememberMmkvBool(AppConfig.PREF_CONFIRM_REMOVE, false)
-    var doubleColumnDisplay by rememberMmkvBool(AppConfig.PREF_DOUBLE_COLUMN_DISPLAY, false)
     var groupAllDisplay by rememberMmkvBool(AppConfig.PREF_GROUP_ALL_DISPLAY, false)
     var language by remember {
         mutableStateOf(
@@ -171,7 +170,6 @@ fun SettingsScreen(
     var coreLogLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
     var outboundResolveMethod by rememberMmkvString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, AppConfig.DEFAULT_OUTBOUND_DOMAIN_RESOLVE_METHOD)
 
-    var isBooted by rememberMmkvBool(AppConfig.PREF_IS_BOOTED, false)
     var delayTestUrl by rememberMmkvString(AppConfig.PREF_DELAY_TEST_URL, "")
     var realPingConcurrency by rememberMmkvString(AppConfig.PREF_REAL_PING_CONCURRENCY, "16")
     var ipApiUrl by rememberMmkvString(AppConfig.PREF_IP_API_URL, "")
