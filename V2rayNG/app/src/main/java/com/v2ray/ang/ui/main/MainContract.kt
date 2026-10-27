@@ -34,14 +34,30 @@ data class MainUiState(
      * PattNG: a move of a profile the storage refused, still to be told, by a number of its own, so that a refusal set
      * again right after the last one was told is told too; null when none, see [MainAction.MoveRefusalShown].
      */
+    val rootMode: Boolean = false,
+    val vpnHotspot: Boolean = false,
+    val groupDialog: GroupDialogState? = null,
     val moveRefusal: Int? = null
 )
+
+enum class GroupDialogKind { Menu, Rename, Delete, Link, Profiles, ResetUsage }
+data class GroupDialogState(val groupId: String, val title: String, val kind: GroupDialogKind, val link: String = "")
 
 /**
  * All possible user interaction intents
  */
 sealed interface MainAction {
     data object Initialize : MainAction
+    data class ShowGroupDialog(val groupId: String, val kind: GroupDialogKind) : MainAction
+    data object DismissGroupDialog : MainAction
+    data class RenameGroup(val groupId: String, val name: String) : MainAction
+    data class RenameProfiles(val groupId: String, val prefix: String) : MainAction
+    data class DeleteGroup(val groupId: String) : MainAction
+    data class MoveGroup(val groupId: String, val direction: Int) : MainAction
+    data class CopyGroupLink(val groupId: String, val qr: Boolean) : MainAction
+    data object ResetProfileUsage : MainAction
+    data class SetRootMode(val enabled: Boolean) : MainAction
+    data class SetVpnHotspot(val enabled: Boolean) : MainAction
 
     /** The screen became visible: what it shows of the service may be out of date. */
     data object RefreshServiceState : MainAction

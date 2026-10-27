@@ -123,6 +123,8 @@ fun MainScreen(
             }
     }
 
+    CustomizationDialogs(uiState, onAction)
+
     MainDialogs(
         showDelAllConfirm = showDelAllConfirm,
         onDismissDelAll = { showDelAllConfirm = false },
@@ -158,6 +160,8 @@ fun MainScreen(
         drawerContent = {
             MainDrawerContent(
                 drawerState = drawerState,
+                uiState = uiState,
+                onAction = onAction,
                 onNavigate = { route ->
                     scope.launch { drawerState.close() }
                     onNavigate(route)
@@ -186,6 +190,8 @@ fun MainScreen(
                     onAction = onAction,
                     onMoreMenuAction = { action ->
                         when (action) {
+                            MainMoreMenuAction.RenameConfigs -> onAction(MainAction.ShowGroupDialog(uiState.selectedGroupId, GroupDialogKind.Profiles))
+                            MainMoreMenuAction.ResetUsage -> onAction(MainAction.ShowGroupDialog("", GroupDialogKind.ResetUsage))
                             MainMoreMenuAction.RestartService -> onAction(MainAction.RestartService)
                             MainMoreMenuAction.DeleteAll -> showDelAllConfirm = true
                             MainMoreMenuAction.DeleteDuplicate -> showDelDuplicateConfirm = true
@@ -234,6 +240,7 @@ fun MainScreen(
                         )
                     }
 
+                    SubscriptionRefreshContainer(isLoading, { onAction(MainAction.UpdateGroupSubscription(uiState.selectedGroupId)) }) {
                     HorizontalPager(
                         state = pagerState,
                         modifier = Modifier.fillMaxSize(),
@@ -271,6 +278,7 @@ fun MainScreen(
                                 bottom = 80.dp
                             )
                         )
+                    }
                     }
                 }
             }

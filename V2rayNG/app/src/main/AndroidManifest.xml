@@ -39,7 +39,6 @@
         android:minSdkVersion="34" />
     <!-- <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" /> -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".AngApplication"
@@ -170,25 +169,9 @@
             android:windowSoftInputMode="stateUnchanged|adjustResize"
             android:exported="false" />
         <activity
-            android:name=".ui.shortcut.ScScannerActivity"
-            android:exported="false" />
-        <activity
             android:name=".ui.shortcut.ScSwitchActivity"
             android:excludeFromRecents="true"
             android:exported="false"
-            android:process=":daemon"
-            android:theme="@style/AppThemeDayNight.NoActionBar.Translucent" />
-        <activity
-            android:name=".ui.shortcut.ScStartActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:process=":daemon"
-            android:theme="@style/AppThemeDayNight.NoActionBar.Translucent" />
-        <activity
-            android:name=".ui.shortcut.ScStopActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:process=":daemon"
             android:theme="@style/AppThemeDayNight.NoActionBar.Translucent" />
 
         <activity
@@ -288,7 +271,8 @@
         <receiver
             android:name=".receiver.WidgetProvider"
             android:exported="false"
-            android:process=":daemon">
+            android:label="@string/app_widget_name"
+            android:icon="@drawable/ic_widget_transparent">
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/app_widget_provider" />
@@ -296,16 +280,6 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="${applicationId}.action.widget.click" />
                 <action android:name="${applicationId}.action.activity" />
-            </intent-filter>
-        </receiver>
-        <receiver
-            android:name=".receiver.BootReceiver"
-            android:exported="true"
-            android:label="BootReceiver">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

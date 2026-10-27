@@ -39,12 +39,15 @@ class AngApplication : Application() {
         MmkvManager.initialize(this)
 
         AppLocaleManager.initialize(this)
+        com.v2ray.ang.root.HotspotSession.resetOnFreshUiProcess(this)
 
         // Initialize WorkManager with the custom configuration
         WorkManager.initialize(this, workManagerConfiguration)
 
         // Ensure critical preference defaults are present in MMKV early
         SettingsManager.initApp(this)
+        MmkvManager.encodeSettings(AppConfig.PREF_IS_BOOTED, false)
+        MmkvManager.encodeSettings(AppConfig.PREF_DOUBLE_COLUMN_DISPLAY, false)
 
         // PattNG: the Aether cores of this process listen on the port of the settings.
         AetherCoreManager.listenPortSource = SettingsManager::getAetherListenPort

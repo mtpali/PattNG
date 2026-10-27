@@ -30,7 +30,10 @@ import java.lang.ref.SoftReference
  */
 class CoreRootService : Service(), ServiceControl {
 
-    private var setupJob: Job? = null
+    private val lifecycle by lazy { ServiceLifecycle(this) {
+        try { RootProxyManager.stop(this) }
+        finally { CoreServiceManager.stopCoreLoop() }
+    } }
 
     override fun onCreate() {
         super.onCreate()
@@ -40,45 +43,20 @@ class CoreRootService : Service(), ServiceControl {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         NotificationManager.ensureForeground()
-        LogUtil.i(AppConfig.TAG, "StartCore-Root: command received")
-
-        // A reload has Xray stopped for a moment; a start on top of it would run beside the reload and
-        // take the root rules and the tunnel down to install them again, with the traffic unrouted meanwhile.
-        if (CoreServiceManager.isServiceRunning()) {
-            LogUtil.i(AppConfig.TAG, "StartCore-Root: Core is already running")
-            return START_STICKY
+        lifecycle.start {
+            CoreServiceManager.startCoreLoop(null) && RootProxyManager.start(this)
         }
+        return START_NOT_STICKY
+    }
 
-        // Start the in-process core first (this also posts the foreground notification),
-        // then install the root routing off the main thread.
-        if (!CoreServiceManager.startCoreLoop(null)) {
-            LogUtil.e(AppConfig.TAG, "StartCore-Root: core failed to start")
-            stopService()
-            return START_NOT_STICKY
-        }
-
-        setupJob = CoroutineScope(Dispatchers.IO).launch {
-            if (!RootProxyManager.start(this@CoreRootService)) {
-                LogUtil.e(AppConfig.TAG, "StartCore-Root: failed to start root mode, stopping")
-                stopService()
-            }
-        }
-
-        return START_STICKY
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        com.v2ray.ang.root.HotspotSession.releaseAsync(applicationContext)
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
+        lifecycle.destroy()
         super.onDestroy()
-        // Wait for any in-flight async setup to finish before tearing down. The rules are
-        // installed off the main thread and can take seconds (the setup script waits for the
-        // tun to appear); if a stop arrives during that window, teardown would run first and
-        // the setup would then re-install the rules + tun pointing at a now-dead core,
-        // blackholing all traffic until the next start/stop cycle clears it.
-        runBlocking { setupJob?.cancelAndJoin() }
-        // Remove routing rules BEFORE stopping the core so traffic is never redirected
-        // to a dead listener. Synchronous on purpose — leaving rules behind breaks the net.
-        RootProxyManager.stop(this)
-        CoreServiceManager.stopCoreLoop()
     }
 
     override fun getService(): Service = this
@@ -87,9 +65,9 @@ class CoreRootService : Service(), ServiceControl {
         // do nothing
     }
 
-    override fun stopService() {
-        stopSelf()
-    }
+    override fun restartService() { lifecycle.restart() }
+
+    override fun stopService() { lifecycle.stop() }
 
     override fun vpnProtect(socket: Int): Boolean = true
 

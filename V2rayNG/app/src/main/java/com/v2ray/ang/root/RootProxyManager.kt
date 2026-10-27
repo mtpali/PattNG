@@ -142,13 +142,26 @@ object RootProxyManager {
             emptyList()
         }
 
+        val token = Utils.getUuid()
+        val directory = runDir.absolutePath
+        File(runDir, "runtime.token").writeText(token)
+        File(runDir, "guard_cleanup.sh").writeText(
+            "[ \"\$(cat '$directory/runtime.token' 2>/dev/null)\" = '$token' ] || exit 0\n" + buildTeardown(context)
+        )
+        val lanCleanup = File(runDir, "guard_lan_cleanup.sh")
+        if (lanShare) lanCleanup.writeText(buildLanTeardown()) else lanCleanup.delete()
+        File(runDir, "guard_runtime.sh").writeText(RootRuntimeGuard.script(corePid,
+            HotspotSession.startTime(corePid), directory, token, captureDeviceTraffic))
+
         return buildString {
             appendLine("set -e")
+            appendLine("echo \"\$\$ \$(awk '{print \$22}' /proc/\$\$/stat)\" > '$directory/setup.owner'")
+            appendLine("trap \"rm -f '$directory/setup.owner'\" EXIT")
             appendLine("BIN='${bin.absolutePath}'")
             // Protect the core (this app process) from the Android low-memory killer.
             // system_server keeps recomputing oom_score_adj for app processes, so a single
             // write would be reverted — re-pin it from a small root loop instead.
-            appendLine("nohup sh -c 'while true; do echo ${AppConfig.ROOT_OOM_SCORE} > /proc/$corePid/oom_score_adj 2>/dev/null; sleep 5; done' >/dev/null 2>&1 &")
+            appendLine("nohup sh '$directory/guard_runtime.sh' >/dev/null 2>&1 &")
             appendLine("echo \$! > '$oomGuardPid'")
             // tun device node
             appendLine("if [ ! -e /dev/net/tun ]; then mkdir -p /dev/net; mknod /dev/net/tun c 10 200; chmod 666 /dev/net/tun; fi")
@@ -514,6 +527,30 @@ object RootProxyManager {
         }
     }
 
+    /** Only tethered-client rules; root capture of the phone remains installed. */
+    private fun buildLanTeardown(): String = buildString {
+        val fwd = AppConfig.ROOT_FWD_CHAIN
+        val dns = AppConfig.ROOT_DNS_CHAIN
+        val v6fwd = AppConfig.ROOT_V6_FWD_CHAIN
+        val v6pre = AppConfig.ROOT_V6_PRE_CHAIN
+        appendLine("iptables -D FORWARD -j $fwd 2>/dev/null || true")
+        appendLine("iptables -F $fwd 2>/dev/null || true")
+        appendLine("iptables -X $fwd 2>/dev/null || true")
+        appendLine("iptables -t mangle -D FORWARD -o $TUN -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1350 2>/dev/null || true")
+        appendLine("iptables -t nat -D PREROUTING -j $dns 2>/dev/null || true")
+        appendLine("iptables -t nat -F $dns 2>/dev/null || true")
+        appendLine("iptables -t nat -X $dns 2>/dev/null || true")
+        appendLine("ip6tables -D FORWARD -j $v6fwd 2>/dev/null || true")
+        appendLine("ip6tables -F $v6fwd 2>/dev/null || true")
+        appendLine("ip6tables -X $v6fwd 2>/dev/null || true")
+        appendLine("ip6tables -t mangle -D PREROUTING -j $v6pre 2>/dev/null || true")
+        appendLine("ip6tables -t mangle -F $v6pre 2>/dev/null || true")
+        appendLine("ip6tables -t mangle -X $v6pre 2>/dev/null || true")
+        for (priority in listOf(5000, 5010, 5020, 5025, 5026, 5027, 5030, 5040, 5050, 6000)) {
+            appendLine("ip rule del pref $priority 2>/dev/null || true")
+        }
+    }
+
     // ---------------------------------------------------------------- teardown
 
     private fun buildTeardown(context: Context): String {
@@ -522,6 +559,7 @@ object RootProxyManager {
         val oomGuardPid = File(runDir, "oomguard.pid").absolutePath
         val corePid = Process.myPid()
         return buildString {
+            appendLine("rm -f '${runDir.absolutePath}/runtime.token'")
             // mangle (TUN2SOCKS), both families
             for (cmd in listOf("iptables", "ip6tables")) {
                 appendLine("$cmd -t mangle -D OUTPUT -j $CHAIN 2>/dev/null || true")

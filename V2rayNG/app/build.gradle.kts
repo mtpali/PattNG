@@ -14,8 +14,8 @@ android {
         applicationId = "com.v2ray.ang"
         minSdk = 29
         targetSdk = 37
-        versionCode = 754
-        versionName = (project.findProperty("pattngVersion") as? String)?.takeIf { it.isNotBlank() } ?: "2.3.13-P69.1"
+        versionCode = 755
+        versionName = (project.findProperty("pattngVersion") as? String)?.takeIf { it.isNotBlank() } ?: "2.3.13-P69.2"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
@@ -134,18 +134,7 @@ android {
 
     androidResources {
         generateLocaleConfig = true
-        localeFilters += listOf(
-            "en",
-            "zh-rCN",
-            "zh-rTW",
-            "vi",
-            "ru",
-            "fa",
-            "ar",
-            "az",
-            "bn",
-            "bqi-rIR"
-        )
+        localeFilters += listOf("en")
     }
 
     packaging {

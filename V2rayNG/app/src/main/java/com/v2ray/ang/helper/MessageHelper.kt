@@ -59,6 +59,24 @@ object MessageHelper {
         }
     }
 
+    /** The returned state is supplied by the daemon, with a finite wait on both sides. */
+    internal suspend fun queryServiceState(ctx: Context): Int? = kotlinx.coroutines.withTimeoutOrNull(1_500L) {
+        kotlinx.coroutines.suspendCancellableCoroutine<Int> { continuation ->
+            val result = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    if (continuation.isActive) continuation.resumeWith(Result.success(resultCode))
+                }
+            }
+            try {
+                ctx.sendOrderedBroadcast(messageIntent(AppConfig.BROADCAST_ACTION_SERVICE, AppConfig.MSG_QUERY_STATE, ""),
+                    null, result, android.os.Handler(android.os.Looper.getMainLooper()), 0, null, null)
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "Daemon state query failed", e)
+                if (continuation.isActive) continuation.resumeWith(Result.success(-1))
+            }
+        }
+    }
+
     /**
      * Sends a message to the UI.
      *

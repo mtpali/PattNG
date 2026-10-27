@@ -99,6 +99,11 @@ class MainActivity : HelperBaseComponentActivity() {
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
+    override fun onDestroy() {
+        if (isFinishing) com.v2ray.ang.root.HotspotSession.releaseAsync(applicationContext)
+        super.onDestroy()
+    }
+
     override fun onStart() {
         super.onStart()
         // The service can have gone away while the screen was not shown, without a word if its process died.
@@ -185,7 +190,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun requestServiceStart() {
-        if (!SettingsManager.isVpnMode()) {
+        if (!SettingsManager.isVpnMode() || SettingsManager.isRootMode()) {
             startV2Ray()
             return
         }

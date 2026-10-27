@@ -75,6 +75,19 @@ interface MainDataSource : Closeable {
     fun cancelAllPing()
     fun testCurrentServerRealPing(requestId: String)
 
+    fun profileTraffic(): Map<String, com.v2ray.ang.dto.entities.ProfileTraffic> = emptyMap()
+    fun resetProfileUsage() {}
+    fun renameProfiles(groupId: String, prefix: String) {}
+    fun renameGroup(groupId: String, name: String): Boolean = false
+    fun deleteGroup(groupId: String): Boolean = false
+    fun moveGroup(groupId: String, direction: Int): Boolean = false
+    fun copyText(text: String) {}
+    fun linkQRCode(text: String): android.graphics.Bitmap? = null
+    fun rootMode(): Boolean = false
+    fun vpnHotspot(): Boolean = false
+    fun setRootMode(enabled: Boolean): Boolean = false
+    suspend fun setVpnHotspot(enabled: Boolean): Boolean = false
+
     fun syncSubscriptions()
     fun initAssets()
 }

@@ -17,6 +17,7 @@ internal data class ServerRowUiModel(
     val typeDescription: String,
     val testDelayMillis: Long,
     val subscriptionBadge: String,
+    val usageText: String? = null,
 )
 
 internal data class ServerGroupUiState(

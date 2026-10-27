@@ -1,0 +1,3 @@
+# Unified patches contain literal source-context whitespace. Validate the applied
+# source with gofmt, native tests and git diff --check in the native checkout.
+core/patches/*.patch -whitespace

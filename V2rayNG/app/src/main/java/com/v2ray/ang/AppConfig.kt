@@ -207,6 +207,7 @@ object AppConfig {
      */
     const val AETHER_MASQUE_SNI = "www.cloudflare.com"
 
+    const val AMNEZIAWG = "amneziawg://"
     const val WIREGUARD_LOCAL_ADDRESS_V4 = "172.16.0.2/32"
     const val WIREGUARD_LOCAL_ADDRESS_V6 = "2606:4700:110:8f81:d551:a0:532e:a2b3/128"
     const val WIREGUARD_LOCAL_MTU = "1420"
@@ -222,6 +223,11 @@ object AppConfig {
     const val DEFAULT_MUX_XUDP_CONCURRENCY = "8"
 
     /** Message constants for communication. */
+    const val MSG_PROFILE_TRAFFIC = 84
+    const val MSG_RESET_PROFILE_TRAFFIC = 85
+    const val MSG_QUERY_STATE = 83
+    const val MSG_STATE_STARTING = 14
+    const val MSG_STATE_STOPPING = 13
     const val MSG_REGISTER_CLIENT = 1
     const val MSG_STATE_RUNNING = 11
     const val MSG_STATE_NOT_RUNNING = 12

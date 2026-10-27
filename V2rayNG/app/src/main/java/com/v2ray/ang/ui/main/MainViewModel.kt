@@ -14,6 +14,7 @@ import com.v2ray.ang.dto.TestServiceMessage
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.ServersCache
 import com.v2ray.ang.dto.entities.SubscriptionCache
+import com.v2ray.ang.extension.toTrafficString
 import com.v2ray.ang.extension.delay
 import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.matchesPattern
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -95,6 +97,7 @@ class MainViewModel(
     private var filterJob: Job? = null
 
     // ---------- Groups & cache ----------
+    @Volatile private var usageByGuid: Map<String, com.v2ray.ang.dto.entities.ProfileTraffic> = emptyMap()
     private val cacheMutex = Mutex()
     private val groupDataCache = mutableMapOf<String, List<ServersCache>>()
     private val groupUiFlows = ConcurrentHashMap<String, MutableStateFlow<ServerGroupUiState>>()
@@ -159,6 +162,24 @@ class MainViewModel(
     init {
         collectServiceEvents()
         setupGroupTab()
+        refreshUsage()
+    }
+
+    private fun refreshUsage() {
+        viewModelScope.launch(ioDispatcher) {
+            try {
+                val usage = dataSource.profileTraffic()
+                usageByGuid = usage
+                withContext(defaultDispatcher) {
+                    groupUiFlows.values.forEach { flow ->
+                        flow.update { group -> group.copy(rows = group.rows.map { it.copy(usageText = usageLabel(it.guid, usage)) }) }
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                LogUtil.e(AppConfig.TAG, "Main usage: failed to refresh profile counters", e)
+            }
+        }
     }
 
     private fun collectServiceEvents() {
@@ -234,7 +255,8 @@ class MainViewModel(
                 }
             }
 
-            MainServiceEvent.ServersChanged -> setupGroupTab(forceRefresh = true)
+            MainServiceEvent.ProfileTrafficChanged -> refreshUsage()
+            MainServiceEvent.ServersChanged -> { refreshUsage(); setupGroupTab(forceRefresh = true) }
         }
     }
 
@@ -329,8 +351,18 @@ class MainViewModel(
     // ---------- Action handler ----------
     fun onAction(action: MainAction) {
         when (action) {
+            is MainAction.ShowGroupDialog,
+            MainAction.DismissGroupDialog,
+            is MainAction.RenameGroup,
+            is MainAction.RenameProfiles,
+            is MainAction.DeleteGroup,
+            is MainAction.MoveGroup,
+            is MainAction.CopyGroupLink,
+            MainAction.ResetProfileUsage,
+            is MainAction.SetRootMode,
+            is MainAction.SetVpnHotspot -> customize(action)
             MainAction.Initialize -> initialize()
-            MainAction.RefreshServiceState -> dataSource.queryServiceState()
+            MainAction.RefreshServiceState -> { dataSource.queryServiceState(); refreshUsage() }
             MainAction.RefreshGroups -> setupGroupTab(forceRefresh = true)
             MainAction.TestAllServers -> testAllRealPing(true)
             MainAction.TestRealAllServers -> testAllRealPing()
@@ -517,7 +549,56 @@ class MainViewModel(
                 server = server,
                 subscriptionRemarks = subscriptionRemarks[server.profile.subscriptionId].orEmpty(),
                 aetherProtocolLabel = aetherProtocolLabel,
-            )
+            ).copy(usageText = usageLabel(server.guid, usageByGuid))
+        }
+    }
+
+    private fun usageLabel(guid: String, usage: Map<String, com.v2ray.ang.dto.entities.ProfileTraffic>): String? =
+        usage[guid]?.takeIf { it.hasUsage() }?.let {
+            dataSource.getString(R.string.profile_usage, it.upload.toTrafficString(), it.download.toTrafficString())
+        }
+
+    private fun customize(action: MainAction) {
+        viewModelScope.launch(ioDispatcher) {
+            try {
+                when (action) {
+                    is MainAction.ShowGroupDialog -> {
+                        val sub = dataSource.getSubscriptionItem(action.groupId)
+                        if (action.groupId.isNotEmpty() && sub == null) return@launch
+                        _uiState.update { it.copy(groupDialog = GroupDialogState(action.groupId, sub?.remarks.orEmpty(), action.kind, sub?.url.orEmpty())) }
+                        return@launch
+                    }
+                    MainAction.DismissGroupDialog -> { _uiState.update { it.copy(groupDialog = null) }; return@launch }
+                    is MainAction.RenameProfiles -> dataSource.renameProfiles(action.groupId, action.prefix)
+                    is MainAction.RenameGroup -> check(dataSource.renameGroup(action.groupId, action.name))
+                    is MainAction.DeleteGroup -> {
+                        if (dataSource.getSelectServer()?.let(dataSource::decodeServerConfig)?.subscriptionId == action.groupId) {
+                            dataSource.sendMsg2Service(AppConfig.MSG_STATE_STOP, "")
+                        }
+                        check(dataSource.deleteGroup(action.groupId))
+                    }
+                    is MainAction.MoveGroup -> check(dataSource.moveGroup(action.groupId, action.direction))
+                    is MainAction.CopyGroupLink -> {
+                        val link = dataSource.getSubscriptionItem(action.groupId)?.url.orEmpty()
+                        if (link.isBlank()) { toastError(R.string.group_missing_link); return@launch }
+                        if (action.qr) {
+                            val bitmap = dataSource.linkQRCode(link)
+                            _uiState.update { it.copy(shareQRCodeBitmap = bitmap, groupDialog = null) }
+                        } else dataSource.copyText(link)
+                        return@launch
+                    }
+                    MainAction.ResetProfileUsage -> dataSource.resetProfileUsage()
+                    is MainAction.SetRootMode -> check(dataSource.setRootMode(action.enabled))
+                    is MainAction.SetVpnHotspot -> check(dataSource.setVpnHotspot(action.enabled))
+                    else -> return@launch
+                }
+                _uiState.update { it.copy(groupDialog = null) }
+                setupGroupTab(forceRefresh = true)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                LogUtil.e(AppConfig.TAG, "Main customization: ${action::class.java.simpleName} failed", e)
+                toastError(R.string.toast_failure)
+            }
         }
     }
 
@@ -578,6 +659,8 @@ class MainViewModel(
                         groups = groups,
                         selectedGroupId = selectedGroup,
                         selectedGuid = dataSource.getSelectServer(),
+                        rootMode = dataSource.rootMode(),
+                        vpnHotspot = dataSource.vpnHotspot(),
                     )
                 }
                 groups.forEach { mutableServerGroupState(it.id) }

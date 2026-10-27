@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">PattNG</string>
-    <string name="app_widget_name">Switch</string>
+    <string name="app_widget_name">VPN</string>
     <string name="app_tile_name">Switch</string>
     <string name="app_tile_first_use">Add a profile in the app before using this feature.</string>
     <string name="navigation_drawer_open">Open navigation drawer</string>
@@ -797,4 +797,21 @@
     <string name="sub_info_traffic" translatable="false">%1$s / %2$s</string>
     <string name="sub_info_unlimited">Unlimited</string>
 
+    <string name="title_rename_configs">Rename Configs</string>
+    <string name="hint_profile_name_prefix">Optional name prefix</string>
+    <string name="title_reset_profile_usage">Reset usage</string>
+    <string name="profile_usage">Upload %1$s · Download %2$s</string>
+    <string name="group_operations">Subscription actions</string>
+    <string name="group_rename">Rename subscription</string>
+    <string name="group_link">Subscription link / QR</string>
+    <string name="group_move_left">Move left</string>
+    <string name="group_move_right">Move right</string>
+    <string name="group_missing_link">This subscription has no link.</string>
+    <string name="group_delete_confirm">Delete this subscription and its profiles?</string>
+    <string name="group_copy_link">Copy link</string>
+    <string name="group_qr">Show QR code</string>
+    <string name="root_mode_label">Root mode</string>
+    <string name="vpn_hotspot_label">VPN Hotspot</string>
+    <string name="acc_toggle_vpn">Turn VPN on or off</string>
+    <string name="reset_usage_confirm">Reset the recorded usage of every profile?</string>
 </resources>

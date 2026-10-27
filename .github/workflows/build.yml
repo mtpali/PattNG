@@ -3,7 +3,7 @@ name: Build optimized arm64 APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/v2ray-awg-controls]
     paths-ignore:
       - '**/*.md'
       - 'fastlane/**'
@@ -30,6 +30,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: AndroidLibXrayLite/go.mod
       - uses: android-actions/setup-android@v4
         with:
           log-accepted-android-sdk-licenses: false
@@ -41,6 +44,24 @@ jobs:
           key: native-p69-arm64-b70a5a90-0c6e93c5
       - name: Verify and stage the exact P69 native dependencies
         run: python3 scripts/prepare_native.py
+      - uses: actions/cache@v6
+        id: awg-cache
+        with:
+          path: .native-cache/awg/libv2ray.aar
+          key: awg-p69-arm64-${{ hashFiles('core/patches/*.patch', 'scripts/build-amnezia-libv2ray.sh', 'AndroidLibXrayLite/go.*') }}
+      - name: Build and test AmneziaWG on the P69 core
+        if: steps.awg-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y protobuf-compiler qemu-user
+          mobile_version=$(awk '$1 == "golang.org/x/mobile" { print $2; exit }' AndroidLibXrayLite/go.mod)
+          go install "golang.org/x/mobile/cmd/gomobile@$mobile_version"
+          go install "golang.org/x/mobile/cmd/gobind@$mobile_version"
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/30.0.16248370"
+          gomobile init
+          AWG_TEST_ARM64=1 bash scripts/build-amnezia-libv2ray.sh "$PATTNG_NATIVE_CACHE/awg/libv2ray.aar"
+      - name: Stage the ARM64 AmneziaWG core
+        run: cp .native-cache/awg/libv2ray.aar V2rayNG/app/libs/libv2ray.aar
       - name: Build HEV from the pinned source
         run: |
           export NDK_HOME="$ANDROID_HOME/ndk/30.0.16248370"
@@ -51,8 +72,8 @@ jobs:
         run: |
           printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
           chmod +x gradlew
-          ./gradlew :app:testPlaystoreDebugUnitTest --tests com.v2ray.ang.core.PolicyGroupGeoIpTest -PABI_FILTERS=arm64-v8a --no-daemon
-          ./gradlew :app:testPlaystoreDebugUnitTest :app:compilePlaystoreDebugKotlin :app:assemblePlaystoreDebug :app:assemblePlaystoreRelease -PABI_FILTERS=arm64-v8a --no-daemon
+          ./gradlew :app:testPlaystoreDebugUnitTest --tests 'com.v2ray.ang.core.PolicyGroupGeoIpTest' --tests 'com.v2ray.ang.core.ServiceToggleTest' --tests 'com.v2ray.ang.service.ServiceLifecycleGateTest' --tests 'com.v2ray.ang.fmt.WireguardFmtTest' --tests 'com.v2ray.ang.handler.SubscriptionProfilesTest' --tests 'com.v2ray.ang.handler.SubscriptionMutationTest' -PABI_FILTERS=arm64-v8a --no-daemon
+          ./gradlew :app:testPlaystoreDebugUnitTest :app:compilePlaystoreDebugKotlin :app:assemblePlaystoreDebug :app:assemblePlaystoreRelease :app:lintPlaystoreDebug -PABI_FILTERS=arm64-v8a --no-daemon
       - name: Verify APK architecture and R8 outputs
         run: |
           python3 - <<'PYAPK'
@@ -80,4 +101,6 @@ jobs:
           name: build-verification
           path: |
             V2rayNG/app/build/reports/tests/
+            V2rayNG/app/build/test-results/
+            V2rayNG/app/build/reports/lint-results-*
             V2rayNG/app/build/outputs/mapping/playstoreRelease/

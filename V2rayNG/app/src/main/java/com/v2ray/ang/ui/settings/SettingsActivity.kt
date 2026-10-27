@@ -248,15 +248,6 @@ fun SettingsScreen(
                     onCheckedChange = { confirmRemove = it }
                 )
                 SettingsSwitchItem(
-                    title = stringResource(R.string.title_pref_double_column_display),
-                    summary = stringResource(R.string.summary_pref_double_column_display),
-                    checked = doubleColumnDisplay,
-                    onCheckedChange = {
-                        doubleColumnDisplay = it
-                        SettingsChangeManager.makeSetupGroupTab()
-                    }
-                )
-                SettingsSwitchItem(
                     title = stringResource(R.string.title_pref_group_all_display),
                     summary = stringResource(R.string.summary_pref_group_all_display),
                     checked = groupAllDisplay,
@@ -273,16 +264,6 @@ fun SettingsScreen(
                     onCheckedChange = {
                         dynamicColor = it
                         ThemeManager.setDynamicColorEnabled(it)
-                    }
-                )
-                SettingsListItem(
-                    title = stringResource(R.string.title_language),
-                    entries = languageEntries,
-                    values = languageValues,
-                    selectedValue = language,
-                    onSelected = {
-                        language = it
-                        AppLocaleManager.setApplicationLanguage(it)
                     }
                 )
                 SettingsListItem(
@@ -599,19 +580,6 @@ fun SettingsScreen(
                 onExpandedChange = { advancedSettingsExpanded = it }
             )
             if (advancedSettingsExpanded) {
-                SettingsSwitchItem(
-                    title = stringResource(R.string.title_pref_is_booted),
-                    summary = stringResource(R.string.summary_pref_is_booted),
-                    checked = isBooted,
-                    onCheckedChange = { isBooted = it }
-                )
-                if (systemVpnSettingsAvailable) {
-                    SettingsMenuItem(
-                        title = stringResource(R.string.title_system_vpn_settings),
-                        subtitle = stringResource(R.string.summary_system_vpn_settings),
-                        onClick = onSystemVpnSettingsClicked
-                    )
-                }
                 SettingsEditItem(
                     title = stringResource(R.string.title_pref_delay_test_url),
                     value = delayTestUrl,
@@ -642,38 +610,6 @@ fun SettingsScreen(
                     values = modeValues,
                     selectedValue = mode,
                     onSelected = { mode = it }
-                )
-                SettingsMenuItem(
-                    title = stringResource(R.string.title_mode_help),
-                    onClick = onModeHelpClicked
-                )
-                SettingsSwitchItem(
-                    title = stringResource(R.string.title_root_mode_enabled),
-                    summary = stringResource(R.string.summary_root_mode_enabled),
-                    checked = enableRootMode,
-                    onCheckedChange = { newValue ->
-                        if (newValue && !RootManager.cachedRoot()) {
-                            viewModel.checkAndRequestRoot {
-                                enableRootMode = true
-                            }
-                        } else {
-                            enableRootMode = newValue
-                        }
-                    }
-                )
-                SettingsSwitchItem(
-                    title = stringResource(R.string.title_root_lan_sharing),
-                    summary = stringResource(R.string.summary_root_lan_sharing),
-                    checked = lanSharing,
-                    onCheckedChange = { newValue ->
-                        if (newValue && !RootManager.cachedRoot()) {
-                            viewModel.checkAndRequestRoot {
-                                lanSharing = true
-                            }
-                        } else {
-                            lanSharing = newValue
-                        }
-                    }
                 )
             }
 

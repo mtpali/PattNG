@@ -19,6 +19,8 @@ import com.v2ray.ang.AppConfig.TAG
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.dto.entities.AssetUrlCache
 import com.v2ray.ang.dto.entities.AssetUrlItem
+import com.v2ray.ang.dto.entities.ProfileTraffic
+import com.v2ray.ang.dto.entities.TrafficSnapshot
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.extension.isGroupType
 import com.v2ray.ang.extension.moveItem
@@ -52,6 +54,7 @@ object MmkvManager {
     private const val KEY_ANG_CONFIGS = "ANG_CONFIGS"
     private const val KEY_SUB_SERVER_PREFIX = "SUB_SERVERS_"
     private const val KEY_SUB_IDS = "SUB_IDS"
+    private const val KEY_PROFILE_TRAFFIC = "PROFILE_TRAFFIC_V1"
     private const val KEY_WEBDAV_CONFIG = "WEBDAV_CONFIG"
 
     private val recoveryHandler = object : MMKVHandler {
@@ -114,6 +117,10 @@ object MmkvManager {
         profileFullStorage.removeValuesForKeys(keys)
         serverAffStorage.removeValuesForKeys(keys)
         serverRawStorage.removeValuesForKeys(keys)
+        val traffic = readTrafficLocked()
+        if (guids.map { traffic.profiles.remove(it) }.any { it != null }) {
+            requireStorageWrite(mainStorage.encode(KEY_PROFILE_TRAFFIC, JsonUtil.toJson(traffic)), "Failed to remove profile traffic")
+        }
     }
 
     private fun requireStorageWrite(success: Boolean, message: String) {
@@ -349,76 +356,100 @@ object MmkvManager {
         append: Boolean,
     ) {
         if (profiles.isEmpty()) return
-
         withProfileIndexLock {
-            val replacedServers = if (append) {
-                emptyList()
-            } else {
-                decodeServerList(subscriptionId).toList()
-            }
+            val oldList = decodeServerList(subscriptionId).toList()
+            val existing = if (append) emptyMap() else oldList.mapNotNull { guid ->
+                decodeServerConfig(guid)?.takeUnless { it.configType.isGroupType() }?.let {
+                    guid to SubscriptionProfiles.Entry(it, decodeServerRaw(guid))
+                }
+            }.toMap()
+            val incoming = profiles.map { (guid, profile) -> SubscriptionProfiles.Entry(profile, rawConfigs[guid]) }
+            val generated = profiles.keys.iterator()
+            val saved = SubscriptionProfiles.plan(existing, incoming) { generated.next() }
+            val reconciled = saved.associate { it.guid to it.entry.profile }
             val previousSelection = getSelectServer()
-            val selectedProfile = if (!append &&
-                previousSelection != null &&
-                previousSelection in replacedServers
-            ) {
-                decodeServerConfig(previousSelection)
-            } else {
-                null
-            }
-            val replacementSelection = ProfileReplacement.findSelectedReplacement(
-                profiles = profiles,
-                currentSelection = previousSelection,
-                selectedProfile = selectedProfile,
+            val replacement = if (previousSelection in reconciled) previousSelection else ProfileReplacement.findSelectedReplacement(
+                reconciled, previousSelection,
+                previousSelection?.takeIf { !append && it in oldList }?.let(::decodeServerConfig),
             )
-
-            profiles.forEach { (guid, profile) ->
-                requireStorageWrite(
-                    profileFullStorage.encode(guid, JsonUtil.toJson(profile)),
-                    "Failed to save profile payload",
-                )
-                rawConfigs[guid]?.let { raw ->
-                    requireStorageWrite(
-                        serverRawStorage.encode(guid, raw),
-                        "Failed to save raw profile payload",
-                    )
+            val list = if (append) oldList.toMutableList() else oldList.filter { guid ->
+                decodeServerConfig(guid)?.configType?.isGroupType() == true
+            }.toMutableList()
+            saved.forEach { if (it.guid !in list) list.add(0, it.guid) }
+            val changes = linkedMapOf<Pair<MMKV, String>, String?>()
+            saved.forEach { item ->
+                val payload = JsonUtil.parseString(JsonUtil.toJson(item.entry.profile))!!
+                if (item.reused) {
+                    val previous = profileFullStorage.decodeString(item.guid)?.let(JsonUtil::parseString)
+                    val known = ProfileItem::class.java.declaredFields.map { it.name }.toSet()
+                    previous?.entrySet()?.filter { it.key !in known }?.forEach { payload.add(it.key, it.value) }
+                }
+                changes[profileFullStorage to item.guid] = payload.toString()
+                item.entry.raw?.let { changes[serverRawStorage to item.guid] = it }
+            }
+            changes[mainStorage to serverListKey(subscriptionId)] = JsonUtil.toJson(list)
+            replacement?.let { changes[mainStorage to KEY_SELECTED_SERVER] = it }
+            if (!append) {
+                val removable = ProfileReplacement.findRemovablePayloads(oldList, list.toSet(), replacement ?: previousSelection,
+                    decodeServersReferencedByOtherGroups(subscriptionId))
+                removable.forEach { guid ->
+                    changes[profileFullStorage to guid] = null
+                    changes[serverRawStorage to guid] = null
+                    changes[serverAffStorage to guid] = null
+                }
+                val traffic = readTrafficLocked()
+                if (removable.map { traffic.profiles.remove(it) }.any { it != null }) {
+                    changes[mainStorage to KEY_PROFILE_TRAFFIC] = JsonUtil.toJson(traffic)
                 }
             }
-
-            val serverList = if (append) {
-                decodeServerList(subscriptionId)
-            } else {
-                replacedServers.filter { guid ->
-                    decodeServerConfig(guid)?.configType?.isGroupType() == true
-                }.toMutableList()
-            }
-            val indexedServers = serverList.toHashSet()
-            profiles.keys.forEach { guid ->
-                if (indexedServers.add(guid)) {
-                    serverList.add(0, guid)
-                }
-            }
-            requireStorageWrite(
-                persistServerList(serverList, subscriptionId),
-                "Failed to publish profile index",
-            )
-            replacementSelection?.let { guid ->
-                requireStorageWrite(
-                    mainStorage.encode(KEY_SELECTED_SERVER, guid),
-                    "Failed to update selected profile",
-                )
-            }
-            if (replacedServers.isEmpty()) return@withProfileIndexLock
-
-            val protectedServer = replacementSelection ?: previousSelection
-            val referencedByOtherGroups = decodeServersReferencedByOtherGroups(subscriptionId)
-            val removablePayloads = ProfileReplacement.findRemovablePayloads(
-                replacedServers = replacedServers,
-                replacementServers = serverList.toSet(),
-                protectedServer = protectedServer,
-                serversReferencedByOtherGroups = referencedByOtherGroups,
-            )
-            removeProfilePayloads(removablePayloads)
+            writeProfileChanges(changes)
         }
+    }
+
+    private fun writeProfileChanges(changes: Map<Pair<MMKV, String>, String?>) {
+        SubscriptionMutation.apply(changes, { (store, key) -> store.decodeString(key) },
+            { (store, key), value ->
+                if (value == null) { store.removeValueForKey(key); !store.containsKey(key) }
+                else store.encode(key, value)
+            },
+            { (_, key), error -> LogUtil.e(TAG, "Profile transaction: failed to restore record $key", error) })
+    }
+
+    /** Keeps usage independent of latency results, under the cross-process profile lock. */
+    fun readTraffic(): TrafficSnapshot = withProfileIndexLock { readTrafficLocked() }
+
+    private fun readTrafficLocked(): TrafficSnapshot =
+        mainStorage.decodeString(KEY_PROFILE_TRAFFIC)?.let { JsonUtil.fromJson(it, TrafficSnapshot::class.java) }
+            ?: TrafficSnapshot()
+
+    fun addTraffic(guid: String, generation: String, upload: Long, download: Long): Boolean = withProfileIndexLock {
+        val snapshot = readTrafficLocked()
+        if (snapshot.generation != generation || !profileFullStorage.containsKey(guid)) return@withProfileIndexLock false
+        snapshot.profiles[guid] = (snapshot.profiles[guid] ?: ProfileTraffic()).add(upload, download)
+        requireStorageWrite(mainStorage.encode(KEY_PROFILE_TRAFFIC, JsonUtil.toJson(snapshot)), "Failed to store profile traffic")
+        true
+    }
+
+    fun clearTraffic() = withProfileIndexLock {
+        requireStorageWrite(mainStorage.encode(KEY_PROFILE_TRAFFIC, JsonUtil.toJson(TrafficSnapshot(generation = Utils.getUuid()))),
+            "Failed to reset profile traffic")
+    }
+
+    fun renameServerProfiles(subscriptionId: String, prefix: String) = withProfileIndexLock {
+        val guids = if (subscriptionId.isEmpty()) decodeAllServerList() else decodeServerList(subscriptionId)
+        val changes = linkedMapOf<Pair<MMKV, String>, String?>()
+        guids.forEachIndexed { index, guid ->
+            val json = profileFullStorage.decodeString(guid)?.let(JsonUtil::parseString) ?: return@forEachIndexed
+            val name = prefix.trim().let { if (it.isEmpty()) "${index + 1}" else "$it ${index + 1}" }
+            json.addProperty("remarks", name)
+            changes[profileFullStorage to guid] = json.toString()
+            serverRawStorage.decodeString(guid)?.let { raw ->
+                if (decodeServerConfig(guid)?.configType == com.v2ray.ang.enums.EConfigType.CUSTOM) {
+                    JsonUtil.parseString(raw)?.let { it.addProperty("remarks", name); changes[serverRawStorage to guid] = it.toString() }
+                }
+            }
+        }
+        writeProfileChanges(changes)
     }
 
     /**
@@ -926,6 +957,21 @@ object MmkvManager {
      * list was shown, is not written out of it, and tells whether the storage took it, a refusal logged. With either not
      * listed there is nothing to move, which is no refusal.
      */
+    fun renameSubscription(id: String, name: String): Boolean = withProfileIndexLock {
+        if (name.isBlank()) return@withProfileIndexLock false
+        val payload = subStorage.decodeString(id)?.let(JsonUtil::parseString) ?: return@withProfileIndexLock false
+        payload.addProperty("remarks", name.trim())
+        subStorage.encode(id, payload.toString())
+    }
+
+    fun moveSubscription(id: String, direction: Int): Boolean = withProfileIndexLock {
+        val ids = decodeSubsList()
+        val index = ids.indexOf(id)
+        if (index < 0) return@withProfileIndexLock true
+        val target = ids.getOrNull(index + direction.coerceIn(-1, 1)) ?: return@withProfileIndexLock true
+        tryMoveSubscription(id, target)
+    }
+
     fun tryMoveSubscription(fromId: String, toId: String): Boolean = withProfileIndexLock {
         val subsList = decodeSubsList()
         if (!subsList.moveItem(subsList.indexOf(fromId), subsList.indexOf(toId))) return@withProfileIndexLock true

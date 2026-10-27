@@ -2,6 +2,8 @@ package com.v2ray.ang.ui.main
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -51,16 +53,10 @@ private val primaryDrawerItems = listOf(
     MainDestination.Settings
 )
 
-private val drawerItems = primaryDrawerItems + listOf(
-    MainDestination.Promotion,
-    MainDestination.Logcat,
-    MainDestination.CheckUpdate,
-    MainDestination.BackupRestore,
-    MainDestination.About
-)
+private val drawerItems = primaryDrawerItems + MainDestination.BackupRestore
 
 @Composable
-fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) -> Unit) {
+fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) -> Unit, uiState: MainUiState, onAction: (MainAction) -> Unit) {
     val drawerScrollState = rememberScrollState()
 
     ModalDrawerSheet(
@@ -76,7 +72,7 @@ fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) ->
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
+                    .height(80.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -85,13 +81,6 @@ fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) ->
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    // PattNG: full-color circular logo, no dark-mode tint (tinting a photo logo
-                    // would flatten it into a white disc)
-                    Image(
-                        painter = painterResource(R.drawable.ic_pattng_logo),
-                        contentDescription = null,
-                        modifier = Modifier.size(120.dp)
-                    )
                     Text(
                         text = stringResource(R.string.app_name),
                         style = MaterialTheme.typography.titleLarge,
@@ -99,6 +88,9 @@ fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) ->
                     )
                 }
             }
+            DrawerToggle(stringResource(R.string.vpn_hotspot_label), uiState.vpnHotspot) { onAction(MainAction.SetVpnHotspot(it)) }
+            DrawerToggle(stringResource(R.string.root_mode_label), uiState.rootMode) { onAction(MainAction.SetRootMode(it)) }
+            AppDivider()
             drawerItems.forEachIndexed { index, item ->
                 if (index == primaryDrawerItems.size) AppDivider()
                 NavigationDrawerItem(
@@ -110,5 +102,16 @@ fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) ->
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun DrawerToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    androidx.compose.foundation.layout.Row(
+        modifier = Modifier.fillMaxWidth().toggleable(checked, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        androidx.compose.material3.Switch(checked, onCheckedChange = null, modifier = Modifier.clearAndSetSemantics {})
     }
 }

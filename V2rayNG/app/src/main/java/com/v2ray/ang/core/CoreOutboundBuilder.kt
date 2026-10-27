@@ -413,17 +413,19 @@ object CoreOutboundBuilder {
 
     private fun isHexDigit(c: Char): Boolean = c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F'
 
-    private fun toOutboundWireguard(profileItem: ProfileItem): OutboundBean? {
+    private fun toOutboundWireguard(profileItem: ProfileItem): OutboundBean? =
+        toOutboundWireguard(profileItem, MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED, AppConfig.DEFAULT_IPV6_ENABLED))
+
+    internal fun toOutboundWireguard(profileItem: ProfileItem, ipv6Enabled: Boolean): OutboundBean? {
         val outboundBean = createInitOutbound(EConfigType.WIREGUARD)
 
         val rawAddresses = profileItem.localAddress
-            ?.split(",")
+            ?.split(',', '\n')
             ?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
             ?.ifEmpty { null }
             ?: listOf(AppConfig.WIREGUARD_LOCAL_ADDRESS_V4)
 
-        val ipv6Enabled = MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED, AppConfig.DEFAULT_IPV6_ENABLED)
         val addresses = if (ipv6Enabled) {
             rawAddresses
         } else {
@@ -432,14 +434,14 @@ object CoreOutboundBuilder {
         }
 
         val (remotes, leftOut) = wireguardRemoteDns(
-            profileItem.remoteDNS,
+            profileItem.remoteDNS ?: profileItem.awgDns.takeIf { profileItem.isAmneziaWG },
             ipv6Enabled = ipv6Enabled,
         )
         if (leftOut.isNotEmpty()) {
             // The entries themselves stay out of the log: one may be a DNS URL with an account in it.
             LogUtil.w(
                 AppConfig.TAG,
-                "CoreOutboundBuilder: WireGuard profile '${profileItem.remarks}': ${leftOut.size} remoteDNS entries left out, not IP addresses"
+                "CoreOutboundBuilder: WireGuard: ${leftOut.size} remoteDNS entries left out, not IP addresses"
             )
         }
 
@@ -451,9 +453,48 @@ object CoreOutboundBuilder {
                 peer.publicKey = profileItem.publicKey.orEmpty()
                 peer.preSharedKey = profileItem.preSharedKey?.nullIfBlank()
                 peer.endpoint = Utils.getIpv6Address(profileItem.server) + ":${profileItem.serverPort}"
+                peer.keepAlive = profileItem.keepAlive?.takeIf { it >= 0 }
+                    ?: if (profileItem.isAmneziaWG && profileItem.awgKeepAliveRange.isNullOrBlank()) 25 else null
+                peer.keepAliveRange = profileItem.awgKeepAliveRange?.takeIf { profileItem.isAmneziaWG && it.isNotBlank() }
+                peer.allowedIPs = profileItem.allowedIPs?.split(',', '\n')?.map { it.trim() }
+                    ?.filter { it.isNotEmpty() }?.ifEmpty { null }
             }
             wireguard.mtu = profileItem.mtu
             wireguard.remoteDNS = remotes
+            if (profileItem.isAmneziaWG) {
+                wireguard.dnsServers = (profileItem.remoteDNS ?: profileItem.awgDns)?.split(',', '\n')
+                    ?.map { it.trim() }
+                    ?.filter { isNetipAddress(it) && (ipv6Enabled || !it.contains(":")) }
+                    ?.distinct()
+                    ?.ifEmpty { null }
+                wireguard.amnezia = OutboundBean.OutSettingsBean.AmneziaWGOptionsBean(
+                    jc = profileItem.awgJc,
+                    jmin = profileItem.awgJmin,
+                    jmax = profileItem.awgJmax,
+                    s1 = profileItem.awgS1,
+                    s2 = profileItem.awgS2,
+                    s3 = profileItem.awgS3,
+                    s4 = profileItem.awgS4,
+                    h1 = profileItem.awgH1?.takeIf { it.isNotBlank() },
+                    h2 = profileItem.awgH2?.takeIf { it.isNotBlank() },
+                    h3 = profileItem.awgH3?.takeIf { it.isNotBlank() },
+                    h4 = profileItem.awgH4?.takeIf { it.isNotBlank() },
+                    i1 = profileItem.awgI1?.takeIf { it.isNotBlank() },
+                    i2 = profileItem.awgI2?.takeIf { it.isNotBlank() },
+                    i3 = profileItem.awgI3?.takeIf { it.isNotBlank() },
+                    i4 = profileItem.awgI4?.takeIf { it.isNotBlank() },
+                    i5 = profileItem.awgI5?.takeIf { it.isNotBlank() },
+                    headerProtectionKey = profileItem.awgHeaderProtectionKey?.takeIf { it.isNotBlank() },
+                    contentPaddingAddition = profileItem.awgContentPaddingAddition?.takeIf { it.isNotBlank() },
+                    rekeyAfterTime = profileItem.awgRekeyAfterTime?.takeIf { it.isNotBlank() },
+                    rekeyTimeout = profileItem.awgRekeyTimeout?.takeIf { it.isNotBlank() },
+                    rejectAfterTime = profileItem.awgRejectAfterTime?.takeIf { it.isNotBlank() },
+                    keepaliveTimeout = profileItem.awgKeepaliveTimeout?.takeIf { it.isNotBlank() },
+                    maxHandshakeAttempts = profileItem.awgMaxHandshakeAttempts?.takeIf { it.isNotBlank() },
+                    randomizePacketTrailers = profileItem.awgRandomizePacketTrailers,
+                    disableCookieReplies = profileItem.awgDisableCookieReplies,
+                )
+            }
             wireguard.reserved = profileItem.reserved?.takeIf { it.isNotBlank() }?.split(",")?.filter { it.isNotBlank() }?.map { it.trim().toInt() }
         }
 

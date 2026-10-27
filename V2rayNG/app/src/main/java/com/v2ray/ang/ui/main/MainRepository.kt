@@ -25,6 +25,11 @@ import com.v2ray.ang.handler.SubscriptionUpdater
 import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -38,6 +43,7 @@ class MainRepository(
         get() = AppLocaleManager.localizedContext(app)
 
     private val closed = AtomicBoolean(false)
+    private val resetScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Probe results are finite and must remain lossless until the ViewModel coalesces them.
     private val mainServiceEventChannel = Channel<MainServiceEvent>(Channel.UNLIMITED)
@@ -75,6 +81,7 @@ class MainRepository(
                 )
                 AppConfig.MSG_MEASURE_CONFIG_CANCEL -> MainServiceEvent.MeasureConfigCancelled(requestId)
                 AppConfig.MSG_SERVERS_CHANGED -> MainServiceEvent.ServersChanged
+                AppConfig.MSG_PROFILE_TRAFFIC -> MainServiceEvent.ProfileTrafficChanged
 
                 else -> null
             }
@@ -104,7 +111,44 @@ class MainRepository(
         }.onFailure {
             LogUtil.e(AppConfig.TAG, "Failed to unregister main service receiver", it)
         }
+        resetScope.cancel()
         mainServiceEventChannel.close()
+    }
+
+    override fun profileTraffic() = MmkvManager.readTraffic().profiles.toMap()
+    override fun resetProfileUsage() {
+        MessageHelper.sendMsg2ServiceForResult(app, AppConfig.MSG_RESET_PROFILE_TRAFFIC, "") { handled ->
+            if (!handled) {
+                // No daemon owns runtime counters; reset persisted data off the broadcast thread.
+                resetScope.launch {
+                    MmkvManager.clearTraffic()
+                    MessageHelper.sendMsg2UI(app, AppConfig.MSG_PROFILE_TRAFFIC, "")
+                }
+            }
+        }
+    }
+    override fun renameProfiles(groupId: String, prefix: String) = MmkvManager.renameServerProfiles(groupId, prefix)
+    override fun renameGroup(groupId: String, name: String) = MmkvManager.renameSubscription(groupId, name)
+    override fun deleteGroup(groupId: String) = MmkvManager.tryRemoveSubscription(groupId)
+    override fun moveGroup(groupId: String, direction: Int) = MmkvManager.moveSubscription(groupId, direction)
+    override fun copyText(text: String) { Utils.setClipboard(app, text) }
+    override fun linkQRCode(text: String) = com.v2ray.ang.util.QRCodeDecoder.createQRCode(text)
+    override fun rootMode() = SettingsManager.isRootMode()
+    override fun vpnHotspot() = MmkvManager.decodeSettingsBool(AppConfig.PREF_ROOT_LAN_SHARING, false)
+    override fun setRootMode(enabled: Boolean): Boolean {
+        if (enabled && !com.v2ray.ang.root.RootManager.isRootAvailable(forceRefresh = true)) return false
+        if (!MmkvManager.encodeSettings(AppConfig.PREF_ROOT_MODE_ENABLE, enabled)) return false
+        MessageHelper.sendMsg2Service(app, AppConfig.MSG_STATE_STOP, "")
+        return true
+    }
+    override suspend fun setVpnHotspot(enabled: Boolean): Boolean {
+        if (enabled && !com.v2ray.ang.root.RootManager.isRootAvailable(forceRefresh = true)) return false
+        if (enabled) {
+            if (!com.v2ray.ang.root.HotspotSession.claim(app)) return false
+        } else com.v2ray.ang.root.HotspotSession.release(app)
+        if (!MmkvManager.encodeSettings(AppConfig.PREF_ROOT_LAN_SHARING, enabled)) return false
+        MessageHelper.sendMsg2Service(app, AppConfig.MSG_STATE_RESTART, "")
+        return true
     }
 
     override fun getSelectedSubscriptionId(): String =
@@ -121,8 +165,7 @@ class MainRepository(
     override fun getConfirmRemove(): Boolean =
         MmkvManager.decodeSettingsBool(AppConfig.PREF_CONFIRM_REMOVE, false)
 
-    override fun getDoubleColumnDisplay(): Boolean =
-        MmkvManager.decodeSettingsBool(AppConfig.PREF_DOUBLE_COLUMN_DISPLAY, false)
+    override fun getDoubleColumnDisplay(): Boolean = false
 
     override fun isGroupAllDisplayEnabled(): Boolean =
         MmkvManager.decodeSettingsBool(AppConfig.PREF_GROUP_ALL_DISPLAY)

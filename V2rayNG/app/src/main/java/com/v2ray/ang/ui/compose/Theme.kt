@@ -176,6 +176,13 @@ fun AppTheme(
         darkTheme -> DarkColor
         else -> LightColor
     }
+    val oledScheme = if (darkTheme) colorScheme.copy(
+        background = Color.Black, surface = Color.Black, surfaceVariant = Color.Black,
+        surfaceTint = Color.Black, surfaceContainerLowest = Color.Black,
+        surfaceContainerLow = Color.Black, surfaceContainer = Color.Black,
+        surfaceContainerHigh = Color.Black, surfaceContainerHighest = Color.Black,
+        surfaceBright = Color.Black, surfaceDim = Color.Black,
+    ) else colorScheme
     val snackbarController = rememberAppSnackbarController()
 
     val view = LocalView.current
@@ -195,7 +202,7 @@ fun AppTheme(
         LocalAppSnackbar provides snackbarController
     ) {
         MaterialTheme(
-            colorScheme = colorScheme
+            colorScheme = oledScheme
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AppSnackbarBridge(controller = snackbarController)

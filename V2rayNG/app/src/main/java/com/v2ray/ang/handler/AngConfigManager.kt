@@ -50,6 +50,7 @@ object AngConfigManager {
             EConfigType.TROJAN.protocolScheme to TrojanFmt::parse,
             EConfigType.VLESS.protocolScheme to VlessFmt::parse,
             EConfigType.WIREGUARD.protocolScheme to WireguardFmt::parse,
+            AppConfig.AMNEZIAWG to WireguardFmt::parseAmneziaWG,
             EConfigType.HYSTERIA2.protocolScheme to Hysteria2Fmt::parse,
             AppConfig.HY2 to Hysteria2Fmt::parse,
             EConfigType.AETHER.protocolScheme to AetherFmt::parse,
@@ -160,6 +161,7 @@ object AngConfigManager {
         try {
             val config = MmkvManager.decodeServerConfig(guid) ?: return ""
 
+            if (config.configType == EConfigType.WIREGUARD) return WireguardFmt.exportUri(config)
             return config.configType.protocolScheme + when (config.configType) {
                 EConfigType.VMESS -> VmessFmt.toUri(config)
                 EConfigType.SHADOWSOCKS -> ShadowsocksFmt.toUri(config)
@@ -377,7 +379,7 @@ object AngConfigManager {
                 LogUtil.e(AppConfig.TAG, "Failed to parse custom config server as single config", e)
             }
             return 0
-        } else if (server.startsWith("[Interface]") && server.contains("[Peer]")) {
+        } else if (WireguardFmt.isWireguardConf(server)) {
             try {
                 val config = WireguardFmt.parseWireguardConfFile(server)
                 config.subscriptionId = subid

@@ -5,6 +5,7 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.handler.MmkvManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
@@ -13,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 
 object RootLanSharing {
 
+    private val sharingScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var lanSharingStarted = false
     private var lanShareJob: Job? = null
 
@@ -24,11 +26,11 @@ object RootLanSharing {
      * short-circuits before touching root state.
      */
     fun startClientSharing(context: Context): Boolean {
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_ROOT_LAN_SHARING) && RootManager.cachedRoot()) {
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_ROOT_LAN_SHARING) && RootManager.isRootAvailable()) {
             if (lanShareJob != null) return false
 
             lanSharingStarted = true
-            lanShareJob = CoroutineScope(Dispatchers.IO).launch { RootProxyManager.startClientSharing(context) }
+            lanShareJob = sharingScope.launch { RootProxyManager.startClientSharing(context) }
         }
 
         return true

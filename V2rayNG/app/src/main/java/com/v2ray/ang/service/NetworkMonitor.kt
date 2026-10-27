@@ -46,6 +46,9 @@ class NetworkMonitor(
     private var upstream: Network? = null
     private var handoverJob: Job? = null
     private var registered = false
+    private var blocked = false
+    private var wakePending = false
+    private var lostUpstream = false
 
     /** PattNG: lets a handover be claimed from register() until unregister(), see [claimHandover]. */
     private val gate = HandoverGate()
@@ -72,9 +75,15 @@ class NetworkMonitor(
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            val previous = synchronized(lock) { upstream.also { upstream = network } }
+            val recover = synchronized(lock) {
+                val changed = (upstream != null && upstream != network) || lostUpstream || wakePending
+                upstream = network
+                lostUpstream = false
+                blocked = false
+                changed
+            }
             onUnderlyingNetworksChanged(arrayOf(network))
-            if (previous != null && previous != network) {
+            if (recover) {
                 scheduleHandover(network)
             }
         }
@@ -85,7 +94,18 @@ class NetworkMonitor(
         }
 
         override fun onLost(network: Network) {
-            onUnderlyingNetworksChanged(null)
+            val lost = synchronized(lock) { if (upstream == network) { upstream = null; lostUpstream = true; true } else false }
+            if (lost) onUnderlyingNetworksChanged(null)
+        }
+
+        override fun onBlockedStatusChanged(network: Network, isBlocked: Boolean) {
+            val recover = synchronized(lock) {
+                if (upstream != network) false else {
+                    blocked = isBlocked
+                    !isBlocked && wakePending
+                }
+            }
+            if (recover) scheduleHandover(network)
         }
     }
 
@@ -117,6 +137,7 @@ class NetworkMonitor(
             handoverJob = null
             handoverScope.coroutineContext.cancelChildren()
             upstream = null
+            wakePending = false
             if (!registered) return
             registered = false
         }
@@ -125,6 +146,15 @@ class NetworkMonitor(
         } catch (e: Exception) {
             LogUtil.w(AppConfig.TAG, "NetworkMonitor: ${describe()}, unregister: unregistering the callback failed", e)
         }
+    }
+
+    fun recoverAfterWake() {
+        val network = synchronized(lock) {
+            if (!registered) return
+            wakePending = true
+            upstream?.takeUnless { blocked }
+        }
+        network?.let(::scheduleHandover)
     }
 
     private fun scheduleHandover(network: Network) {
@@ -139,7 +169,11 @@ class NetworkMonitor(
                     // PattNG: cancelling ends the wait above, not a handover that has just come out of it. The handover
                     // goes on only once claimed under the gate, which unregister() closes first: an unregistered monitor
                     // claims nothing and calls nothing.
-                    gate.runClaimed({ claimHandover(this@NetworkMonitor) }) { onHandover(this@NetworkMonitor) }
+                    val usable = synchronized(lock) { registered && upstream == network && !blocked }
+                    if (usable) gate.runClaimed({ claimHandover(this@NetworkMonitor) }) {
+                        synchronized(lock) { wakePending = false }
+                        onHandover(this@NetworkMonitor)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

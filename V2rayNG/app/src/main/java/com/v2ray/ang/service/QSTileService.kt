@@ -17,8 +17,15 @@ import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 import java.lang.ref.SoftReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class QSTileService : TileService() {
+    private val tileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun attachBaseContext(newBase: Context?) {
         super.attachBaseContext(newBase?.let(AppLocaleManager::localizedContext))
@@ -35,7 +42,7 @@ class QSTileService : TileService() {
             qsTile?.label = getString(R.string.app_name)
         } else if (state == Tile.STATE_ACTIVE) {
             qsTile?.state = Tile.STATE_ACTIVE
-            qsTile?.label = CoreServiceManager.getRunningServerName()
+            qsTile?.label = getString(R.string.app_widget_name)
         }
 
         qsTile?.updateTile()
@@ -48,10 +55,11 @@ class QSTileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
 
-        if (CoreServiceManager.isRunning()) {
-            setState(Tile.STATE_ACTIVE)
-        } else {
-            setState(Tile.STATE_INACTIVE)
+        tileScope.launch {
+            val state = MessageHelper.queryServiceState(this@QSTileService)
+            withContext(Dispatchers.Main) {
+                setState(if (state == 0 || state == AppConfig.MSG_STATE_NOT_RUNNING) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE)
+            }
         }
         mMsgReceive = ReceiveMessageHandler(this)
         val mFilter = IntentFilter(AppConfig.BROADCAST_ACTION_ACTIVITY)
@@ -64,6 +72,7 @@ class QSTileService : TileService() {
      */
     override fun onStopListening() {
         super.onStopListening()
+        tileScope.coroutineContext.cancelChildren()
 
         try {
             applicationContext.unregisterReceiver(mMsgReceive)
@@ -79,15 +88,20 @@ class QSTileService : TileService() {
      */
     override fun onClick() {
         super.onClick()
-        when (qsTile.state) {
-            Tile.STATE_INACTIVE -> {
-                LauncherManager.startServiceFromToggle(this)
-            }
+        val intent = Intent(this, com.v2ray.ang.ui.shortcut.ScSwitchActivity::class.java).setPackage(packageName)
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            startActivityAndCollapse(android.app.PendingIntent.getActivity(this, 0, intent,
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT))
+        } else openLegacySwitch(intent)
+    }
 
-            Tile.STATE_ACTIVE -> {
-                LauncherManager.stopService(this)
-            }
-        }
+    // API 29-33 has no PendingIntent overload. Remove when minSdk reaches 34.
+    @Suppress("DEPRECATION")
+    private fun openLegacySwitch(intent: Intent) { startActivityAndCollapse(intent) }
+
+    override fun onDestroy() {
+        tileScope.coroutineContext.cancelChildren()
+        super.onDestroy()
     }
 
     private var mMsgReceive: BroadcastReceiver? = null

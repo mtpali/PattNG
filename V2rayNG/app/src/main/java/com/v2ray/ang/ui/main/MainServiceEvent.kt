@@ -19,6 +19,7 @@ sealed class MainServiceEvent {
 
     /** Servers, subscriptions or test results changed away from this screen. */
     data object ServersChanged : MainServiceEvent()
+    data object ProfileTrafficChanged : MainServiceEvent()
 
     companion object {
 

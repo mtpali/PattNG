@@ -20,43 +20,112 @@ import com.v2ray.ang.service.CoreRootService
 import com.v2ray.ang.service.CoreVpnService
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 
 object LauncherManager {
 
+    // Application-owned commands must finish even when a shortcut activity closes.
+    private val commandScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    private val toggleMutex = kotlinx.coroutines.sync.Mutex()
+    private val epoch = java.util.concurrent.atomic.AtomicLong()
+    private val commandLock = Any()
+    @Volatile private var reservedStart = false
+    @Volatile private var stopping = false
+    @Volatile private var startJob: kotlinx.coroutines.Job? = null
+    private val stopCallbacks = mutableListOf<() -> Unit>()
+
+    internal suspend fun planToggle(context: Context): TogglePlan = toggleMutex.withLock {
+        val state = if (reservedStart || startJob?.isActive == true || stopping) null else MessageHelper.queryServiceState(context)
+        val action = ServiceToggle.decide(state, reservedStart || startJob?.isActive == true, stopping)
+        val ticket = if (action == ToggleAction.Start) epoch.incrementAndGet().also { reservedStart = true } else 0L
+        TogglePlan(action, ticket)
+    }
+
+    internal fun cancelStart(ticket: Long) {
+        synchronized(commandLock) {
+            if (epoch.get() == ticket) { epoch.incrementAndGet(); reservedStart = false; startJob?.cancel() }
+        }
+    }
+
     fun startServiceFromToggle(context: Context): Boolean {
-        if (MmkvManager.getSelectServer().isNullOrEmpty()) {
-            context.toast(R.string.app_tile_first_use)
-            return false
-        }
-        try {
-            startContextService(context)
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "LauncherManager: ${e.message}", e)
-            context.toast(e.message ?: e.javaClass.simpleName)
-            return false
-        }
+        startService(context)
         return true
     }
 
-    fun startService(context: Context, guid: String? = null) {
-        LogUtil.i(AppConfig.TAG, "LauncherManager: startService from ${context::class.java.simpleName}")
+    fun startService(context: Context, guid: String? = null): kotlinx.coroutines.Job = dispatchStart(context, guid, null)
 
-        if (guid != null) {
-            MmkvManager.setSelectServer(guid)
+    internal suspend fun startReservedService(context: Context, ticket: Long) { dispatchStart(context, null, ticket).join() }
+
+    private fun dispatchStart(context: Context, guid: String?, reservedTicket: Long?): kotlinx.coroutines.Job = synchronized(commandLock) {
+        if (stopping || (reservedTicket != null && epoch.get() != reservedTicket)) {
+            return@synchronized kotlinx.coroutines.Job().apply { complete() }
         }
+        startJob?.takeIf { it.isActive }?.let { return@synchronized it }
+        val ticket = reservedTicket ?: epoch.incrementAndGet()
+        reservedStart = true
+        val app = context.applicationContext
+        commandScope.launch {
+            try {
+                guid?.let(MmkvManager::setSelectServer)
+                if (epoch.get() == ticket && !stopping) startContextService(app) { epoch.get() == ticket && !stopping }
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "Launcher: service dispatch failed", e)
+                android.os.Handler(android.os.Looper.getMainLooper()).post { app.toast(R.string.toast_services_failure) }
+            } finally {
+                if (epoch.get() == ticket) reservedStart = false
+            }
+        }.also { startJob = it }
+    }
 
-        try {
-            startContextService(context)
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "LauncherManager: ${e.message}", e)
-            context.toast(e.message ?: e.javaClass.simpleName)
+    fun stopService(context: Context, onFinished: (() -> Unit)? = null) {
+        val app = context.applicationContext
+        synchronized(commandLock) {
+            onFinished?.let(stopCallbacks::add)
+            if (stopping) return
+            stopping = true
+            epoch.incrementAndGet()
+            reservedStart = false
+            startJob?.cancel()
+        }
+        MessageHelper.sendMsg2Service(app, AppConfig.MSG_STATE_STOP, "")
+        commandScope.launch {
+            var stopped = false
+            try {
+                val original = daemonProcess(app)
+                val originalStart = original?.let { processStart(it.pid) }
+                val state = MessageHelper.queryServiceState(app)
+                stopped = state == 0 || state == AppConfig.MSG_STATE_NOT_RUNNING
+                if (!stopped) {
+                    kotlinx.coroutines.delay(3_000L)
+                    val after = MessageHelper.queryServiceState(app)
+                    stopped = after == 0 || after == AppConfig.MSG_STATE_NOT_RUNNING
+                    if (!stopped && original != null && originalStart != null) {
+                        val current = daemonProcess(app)
+                        if (current?.pid == original.pid && processStart(current.pid) == originalStart) {
+                            android.os.Process.killProcess(current.pid)
+                            repeat(5) { if (processStart(current.pid) != originalStart) stopped = true else kotlinx.coroutines.delay(100L) }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "Launcher: bounded daemon stop failed", e)
+            } finally {
+                MessageHelper.sendMsg2UI(app, if (stopped) AppConfig.MSG_STATE_STOP_SUCCESS else AppConfig.MSG_STATE_RUNNING, "")
+                val callbacks = synchronized(commandLock) { stopping = false; stopCallbacks.toList().also { stopCallbacks.clear() } }
+                android.os.Handler(android.os.Looper.getMainLooper()).post { callbacks.forEach { it() } }
+            }
         }
     }
 
-    fun stopService(context: Context) {
-        //context.toast(R.string.toast_services_stop)
-        MessageHelper.sendMsg2Service(context, AppConfig.MSG_STATE_STOP, "")
-    }
+    private fun daemonProcess(context: Context): android.app.ActivityManager.RunningAppProcessInfo? =
+        (context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager)?.runningAppProcesses?.firstOrNull {
+            DaemonIdentity.owned(it.pid, it.uid, it.processName, android.os.Process.myPid(), android.os.Process.myUid(), context.packageName)
+        }
+
+    private fun processStart(pid: Int): String? = try {
+        java.io.File("/proc/$pid/stat").readText().substringAfterLast(") ").split(' ').getOrNull(19)
+    } catch (_: java.io.IOException) { null }
 
     /** Restarts the active daemon without starting a stopped service. */
     fun restartService(context: Context) {
@@ -77,7 +146,7 @@ object LauncherManager {
             || Utils.isValidUrl(config.server)
 
     @Throws(Exception::class)
-    private fun startContextService(context: Context) {
+    private fun startContextService(context: Context, mayStart: () -> Boolean) {
         // Note: isRunning check is removed here to avoid loading Native libraries in the UI process.
         // The check is performed in CoreServiceManager when the service starts in the daemon process.
 
@@ -129,7 +198,7 @@ object LauncherManager {
         }
 
         try {
-            ContextCompat.startForegroundService(context, intent)
+            if (mayStart()) ContextCompat.startForegroundService(context, intent)
         } catch (e: SecurityException) {
             LogUtil.e(AppConfig.TAG, "LauncherManager: Missing permission to start foreground service", e)
             throw IllegalStateException(e.message ?: e.javaClass.simpleName, e)

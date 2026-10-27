@@ -28,6 +28,8 @@ private enum class ImportMenuAction(@StringRes val labelRes: Int, val action: Ma
 }
 
 enum class MainMoreMenuAction(@StringRes val labelRes: Int) {
+    RenameConfigs(R.string.title_rename_configs),
+    ResetUsage(R.string.title_reset_profile_usage),
     RestartService(R.string.title_service_restart),
     DeleteAll(R.string.title_del_all_config),
     DeleteDuplicate(R.string.title_del_duplicate_config),

@@ -20,6 +20,9 @@ interface ServiceControl {
      */
     fun stopService()
 
+    /** Stops completely before dispatching a fresh service instance. */
+    fun restartService() = stopService()
+
     /**
      * Protects the VPN socket.
      * @param socket The socket to protect.

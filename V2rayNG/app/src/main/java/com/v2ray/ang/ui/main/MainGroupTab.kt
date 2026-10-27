@@ -103,7 +103,9 @@ fun GroupTabBar(
                                 group = group,
                                 selected = index == selectedIndex,
                                 serverFlow = serverFlow,
-                                onClick = { onTabClick(index) }
+                                onClick = { onTabClick(index) },
+                                onMenu = { mainViewModel.onAction(MainAction.ShowGroupDialog(group.id, GroupDialogKind.Menu)) },
+                                onMove = { mainViewModel.onAction(MainAction.MoveGroup(group.id, it)) }
                             )
                         }
                     }
@@ -162,8 +164,11 @@ private fun GroupTabItem(
     group: GroupMapItem,
     selected: Boolean,
     serverFlow: StateFlow<List<ServersCache>>,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onMenu: () -> Unit,
+    onMove: (Int) -> Unit,
 ) {
+    val menuLabel = androidx.compose.ui.res.stringResource(com.v2ray.ang.R.string.group_operations)
     val servers by serverFlow.collectAsStateWithLifecycle()
     // The default group (empty id) never showed a count.
     val count = if (group.id.isEmpty()) 0 else servers.size
@@ -189,6 +194,7 @@ private fun GroupTabItem(
             .onSizeChanged { size = it }
             .clip(CircleShape)
             .background(if (selected) colors.primary.copy(alpha = 0.12f) else Color.Transparent)
+            .subscriptionGestures(group.id, menuLabel, onMenu, onMove)
             .selectable(selected = selected, role = Role.Tab, onClick = onClick)
             .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.Center,

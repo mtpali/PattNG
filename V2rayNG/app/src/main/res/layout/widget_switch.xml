@@ -13,7 +13,7 @@
         android:layout_width="46dp"
         android:layout_height="46dp"
         android:layout_gravity="center"
-        android:background="@drawable/ic_rounded_corner_inactive">
+        android:background="@android:color/transparent">
 
         <ImageView
             android:id="@+id/image_switch"
@@ -22,7 +22,7 @@
             android:layout_gravity="center"
             android:importantForAccessibility="no"
             android:scaleType="fitCenter"
-            android:src="@drawable/ic_play_24dp" />
+            android:src="@drawable/ic_widget_transparent" />
     </FrameLayout>
 
     <TextView
@@ -35,7 +35,7 @@
         android:shadowDx="0"
         android:shadowDy="1"
         android:shadowRadius="4"
-        android:text="@string/app_name"
+        android:text="@string/app_widget_name"
         android:textColor="#FFFFFF"
         android:textSize="11sp"
         android:textStyle="bold" />
