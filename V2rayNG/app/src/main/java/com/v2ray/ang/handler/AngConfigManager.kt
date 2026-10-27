@@ -675,7 +675,7 @@ object AngConfigManager {
 /** Imported names are user data: preserve explicit titles and reserve defaults across the batch. */
 internal fun subscriptionImportNames(titles: List<String?>, existing: Set<String>, baseName: String): List<String> {
     val reserved = (existing + titles.filterNotNull().filter { it.isNotBlank() }).toMutableSet()
-    val numbered = titles.count { it.isNullOrBlank() } > 1
+    val numbered = titles.size > 1
     var next = 1
     return titles.map { title ->
         if (!title.isNullOrBlank()) title

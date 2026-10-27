@@ -70,7 +70,7 @@ class BackupActivity : HelperBaseComponentActivity() {
                         }
 
                         is BackupViewModel.BackupViewModelEvent.RestoreSuccess -> {
-                            SettingsManager.initApp(this@BackupActivity)
+                            withContext(Dispatchers.IO) { SettingsManager.initApp(this@BackupActivity) }
                         }
 
                         else -> {}

@@ -13,6 +13,7 @@ class SubscriptionImportNamesTest {
         assertEquals(listOf("sub 1", "Private", "sub 2"),
             subscriptionImportNames(listOf(null, "Private", ""), emptySet(), "sub"))
         assertEquals(listOf("Private"), subscriptionImportNames(listOf("Private"), emptySet(), "sub"))
+        assertEquals(listOf("Private", "sub 1"), subscriptionImportNames(listOf("Private", null), emptySet(), "sub"))
         assertEquals(emptyList<String>(), subscriptionImportNames(emptyList(), emptySet(), "sub"))
     }
 
