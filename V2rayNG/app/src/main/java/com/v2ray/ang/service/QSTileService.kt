@@ -1,5 +1,6 @@
 package com.v2ray.ang.service
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -96,6 +97,7 @@ class QSTileService : TileService() {
     }
 
     // API 29-33 has no PendingIntent overload. Remove when minSdk reaches 34.
+    @SuppressLint("StartActivityAndCollapseDeprecated")
     @Suppress("DEPRECATION")
     private fun openLegacySwitch(intent: Intent) { startActivityAndCollapse(intent) }
 
