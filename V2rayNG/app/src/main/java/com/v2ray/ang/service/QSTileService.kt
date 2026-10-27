@@ -99,7 +99,11 @@ class QSTileService : TileService() {
     // API 29-33 has no PendingIntent overload. Remove when minSdk reaches 34.
     @SuppressLint("StartActivityAndCollapseDeprecated")
     @Suppress("DEPRECATION")
-    private fun openLegacySwitch(intent: Intent) { startActivityAndCollapse(intent) }
+    private fun openLegacySwitch(intent: Intent) {
+        if (android.os.Build.VERSION.SDK_INT < 34) {
+            startActivityAndCollapse(intent)
+        }
+    }
 
     override fun onDestroy() {
         tileScope.coroutineContext.cancelChildren()

@@ -797,21 +797,21 @@
     <string name="sub_info_traffic" translatable="false">%1$s / %2$s</string>
     <string name="sub_info_unlimited">Unlimited</string>
 
-    <string name="title_rename_configs">Rename Configs</string>
-    <string name="hint_profile_name_prefix">Optional name prefix</string>
-    <string name="title_reset_profile_usage">Reset usage</string>
-    <string name="profile_usage">Upload %1$s · Download %2$s</string>
-    <string name="group_operations">Subscription actions</string>
-    <string name="group_rename">Rename subscription</string>
-    <string name="group_link">Subscription link / QR</string>
-    <string name="group_move_left">Move left</string>
-    <string name="group_move_right">Move right</string>
-    <string name="group_missing_link">This subscription has no link.</string>
-    <string name="group_delete_confirm">Delete this subscription and its profiles?</string>
-    <string name="group_copy_link">Copy link</string>
-    <string name="group_qr">Show QR code</string>
-    <string name="root_mode_label">Root mode</string>
-    <string name="vpn_hotspot_label">VPN Hotspot</string>
-    <string name="acc_toggle_vpn">Turn VPN on or off</string>
-    <string name="reset_usage_confirm">Reset the recorded usage of every profile?</string>
+    <string name="title_rename_configs" translatable="false">Rename Configs</string>
+    <string name="hint_profile_name_prefix" translatable="false">Optional name prefix</string>
+    <string name="title_reset_profile_usage" translatable="false">Reset usage</string>
+    <string name="profile_usage" translatable="false">Upload %1$s · Download %2$s</string>
+    <string name="group_operations" translatable="false">Subscription actions</string>
+    <string name="group_rename" translatable="false">Rename subscription</string>
+    <string name="group_link" translatable="false">Subscription link / QR</string>
+    <string name="group_move_left" translatable="false">Move left</string>
+    <string name="group_move_right" translatable="false">Move right</string>
+    <string name="group_missing_link" translatable="false">This subscription has no link.</string>
+    <string name="group_delete_confirm" translatable="false">Delete this subscription and its profiles?</string>
+    <string name="group_copy_link" translatable="false">Copy link</string>
+    <string name="group_qr" translatable="false">Show QR code</string>
+    <string name="root_mode_label" translatable="false">Root mode</string>
+    <string name="vpn_hotspot_label" translatable="false">VPN Hotspot</string>
+    <string name="acc_toggle_vpn" translatable="false">Turn VPN on or off</string>
+    <string name="reset_usage_confirm" translatable="false">Reset the recorded usage of every profile?</string>
 </resources>
