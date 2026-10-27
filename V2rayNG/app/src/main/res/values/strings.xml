@@ -323,8 +323,6 @@
     <string name="title_language">Language</string>
     <string name="title_ui_settings">UI settings</string>
     <string name="title_pref_ui_mode_night">UI mode settings</string>
-    <string name="title_pref_dynamic_color">Enable dynamic color</string>
-    <string name="summary_pref_dynamic_color">Only works on Android 12+ devices</string>
     <string name="title_pref_use_hev_tunnel">Use Hev TUN</string>
     <string name="summary_pref_use_hev_tunnel">When enabled, TUN will use hev-socks5-tunnel; otherwise, it will use xray-core.</string>
     <string name="title_pref_hev_tunnel_loglevel">Hev TUN log level</string>
@@ -365,7 +363,6 @@
     <string name="toast_invalid_update_interval">Invalid update interval. Minimum is 15 minutes.</string>
     <string name="toast_invalid_override_port">Invalid override port. Use a value from 1 to 65535.</string>
     <string name="title_sub_update">Update subscription</string>
-    <string name="title_ping_all_server">Test TCP delays (TCPing)</string>
     <string name="title_real_ping_all_server">Test real delays</string>
     <string name="title_user_asset_setting">Asset files</string>
     <string name="title_sort_by_test_results">Sort by test results</string>
@@ -472,12 +469,6 @@
     <string name="toast_profile_storage_cleanup">Unused profiles removed: %1$d</string>
     <string name="toast_profile_storage_cleanup_skipped">Profile storage could not be safely classified. Nothing was removed.</string>
     <string name="title_configuration_share">Share config</string>
-    <string name="title_webdav_config_setting">WebDAV Settings</string>
-    <string name="title_webdav_config_setting_unknown">Please configure WebDAV first.</string>
-    <string name="title_webdav_url">WebDAV server URL</string>
-    <string name="title_webdav_user">Username</string>
-    <string name="title_webdav_pass">Password</string>
-    <string name="title_webdav_remote_path">Remote directory (optional)</string>
 
     <string name="share_method_qrcode">QR code</string>
     <string name="share_method_clipboard">Copy profile link</string>
@@ -531,8 +522,6 @@
         <item>Round Robin</item>
     </string-array>
 
-    <string name="backup_location_local">Local</string>
-    <string name="backup_location_webdav" translatable="false">WebDAV</string>
 
     <string name="acc_refresh">Refresh log</string>
     <string name="toast_permission_denied_for">%1$s permission denied</string>
@@ -794,13 +783,10 @@
     </string-array>
     <string name="sub_info_open_support">Open support link</string>
     <string name="sub_info_open_page">Open subscription page</string>
-    <string name="sub_info_traffic" translatable="false">%1$s / %2$s</string>
-    <string name="sub_info_unlimited">Unlimited</string>
 
     <string name="title_rename_configs" translatable="false">Rename Configs</string>
     <string name="hint_profile_name_prefix" translatable="false">Optional name prefix</string>
     <string name="title_reset_profile_usage" translatable="false">Reset usage</string>
-    <string name="profile_usage" translatable="false">Upload %1$s · Download %2$s</string>
     <string name="group_operations" translatable="false">Subscription actions</string>
     <string name="group_rename" translatable="false">Rename subscription</string>
     <string name="group_link" translatable="false">Subscription link / QR</string>
@@ -814,4 +800,5 @@
     <string name="vpn_hotspot_label" translatable="false">VPN Hotspot</string>
     <string name="acc_toggle_vpn" translatable="false">Turn VPN on or off</string>
     <string name="reset_usage_confirm" translatable="false">Reset the recorded usage of every profile?</string>
+    <string name="default_subscription_name" translatable="false">sub</string>
 </resources>

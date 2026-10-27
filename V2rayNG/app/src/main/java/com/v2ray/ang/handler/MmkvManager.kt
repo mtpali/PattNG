@@ -29,7 +29,6 @@ import com.v2ray.ang.dto.entities.ServerAffiliationInfo
 import com.v2ray.ang.dto.entities.SubscriptionCache
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.dto.entities.SubscriptionUsageInfo
-import com.v2ray.ang.dto.entities.WebDavConfig
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
@@ -1273,21 +1272,13 @@ object MmkvManager {
 
     //endregion
 
-    //region WebDAV
+    //region Retired preference migration
 
-    /**
-     * Encodes the WebDAV config as JSON into storage.
-     */
-    fun encodeWebDavConfig(config: WebDavConfig): Boolean {
-        return mainStorage.encode(KEY_WEBDAV_CONFIG, JsonUtil.toJson(config))
-    }
-
-    /**
-     * Decodes the WebDAV config from storage.
-     */
-    fun decodeWebDavConfig(): WebDavConfig? {
-        val json = mainStorage.decodeString(KEY_WEBDAV_CONFIG) ?: return null
-        return JsonUtil.fromJsonSafe(json, WebDavConfig::class.java)
+    /** Removes settings from older backups without decoding their retired credentials. */
+    internal fun clearRetiredPreferences(
+        removeMain: (String) -> Unit = { mainStorage.removeValueForKey(it) },
+    ) {
+        removeMain(KEY_WEBDAV_CONFIG)
     }
 
     //endregion

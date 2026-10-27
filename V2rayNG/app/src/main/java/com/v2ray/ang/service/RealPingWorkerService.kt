@@ -1,6 +1,7 @@
 package com.v2ray.ang.service
 
 import android.content.Context
+import com.v2ray.ang.AppConfig
 import com.v2ray.ang.core.AetherDelayTester
 import com.v2ray.ang.core.CoreConfigContextBuilder
 import com.v2ray.ang.core.CoreConfigManager
@@ -12,6 +13,7 @@ import com.v2ray.ang.extension.isNotNullEmpty
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SpeedtestManager
+import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -49,12 +51,11 @@ internal object RealPingExecutionLimiter {
 class RealPingWorkerService(
     private val context: Context,
     private val guids: List<String>,
-    private val onlyTcp: Boolean = false,
     private val onEvent: (RealPingEvent) -> Unit = {}
 ) {
     private val job = SupervisorJob()
     private val concurrency = SettingsManager.getRealPingConcurrency()
-    private val dispatcher = Executors.newFixedThreadPool(if (onlyTcp) concurrency * 2 else concurrency).asCoroutineDispatcher()
+    private val dispatcher = Executors.newFixedThreadPool(concurrency).asCoroutineDispatcher()
     private val scope = CoroutineScope(job + dispatcher + CoroutineName("RealPingBatchWorker"))
 
     // Names the measurements of this batch in the native core, so that cancel() ends them and no other batch's
@@ -69,12 +70,14 @@ class RealPingWorkerService(
             scope.launch {
                 runningCount.incrementAndGet()
                 try {
-                    val result = if (onlyTcp) startTcping(guid) else startRealPing(guid)
+                    val result = startRealPing(guid)
                     if (scope.isActive) {
                         onEvent(RealPingEvent.Result(guid, result))
                     }
-                } catch (_: Throwable) {
-                    // ignore
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    LogUtil.e(AppConfig.TAG, "RealPingWorker: measurement failed guid=$guid", error)
                 } finally {
                     val count = totalCount.decrementAndGet()
                     val left = runningCount.decrementAndGet()
@@ -160,27 +163,4 @@ class RealPingWorkerService(
         }
     }
 
-    private fun startTcping(guid: String): Long {
-        val retFailure = -1L
-
-        val config = MmkvManager.decodeServerConfig(guid) ?: return retFailure
-        if (config.configType == EConfigType.AETHER) {
-            return AetherDelayTester.reachability(config)
-        }
-        if (!config.configType.isComplexType()
-            && config.configType != EConfigType.HYSTERIA2
-            && config.configType != EConfigType.WIREGUARD
-            && config.alpn?.split(',')?.all { it.trim().startsWith("h3") } != true
-            && config.server.isNotNullEmpty()
-            && config.serverPort?.toIntOrNull() != null
-        ) {
-            val url = config.server.orEmpty()
-            val port = config.serverPort.orEmpty().toInt()
-            val tcpTime = SpeedtestManager.socketConnectTime(url, port, 1000)
-
-            return tcpTime
-        }
-
-        return retFailure
-    }
 }

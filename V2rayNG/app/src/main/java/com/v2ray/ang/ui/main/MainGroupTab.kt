@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -36,6 +36,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -104,8 +107,7 @@ fun GroupTabBar(
                                 selected = index == selectedIndex,
                                 serverFlow = serverFlow,
                                 onClick = { onTabClick(index) },
-                                onMenu = { mainViewModel.onAction(MainAction.ShowGroupDialog(group.id, GroupDialogKind.Menu)) },
-                                onMove = { mainViewModel.onAction(MainAction.MoveGroup(group.id, it)) }
+                                onMenu = { mainViewModel.onAction(MainAction.ShowGroupDialog(group.id, GroupDialogKind.Menu)) }
                             )
                         }
                     }
@@ -166,7 +168,6 @@ private fun GroupTabItem(
     serverFlow: StateFlow<List<ServersCache>>,
     onClick: () -> Unit,
     onMenu: () -> Unit,
-    onMove: (Int) -> Unit,
 ) {
     val menuLabel = androidx.compose.ui.res.stringResource(com.v2ray.ang.R.string.group_operations)
     val servers by serverFlow.collectAsStateWithLifecycle()
@@ -194,8 +195,21 @@ private fun GroupTabItem(
             .onSizeChanged { size = it }
             .clip(CircleShape)
             .background(if (selected) colors.primary.copy(alpha = 0.12f) else Color.Transparent)
-            .subscriptionGestures(group.id, menuLabel, onMenu, onMove)
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .semantics { this.selected = selected }
+            .onPreviewKeyEvent {
+                val event = it.nativeKeyEvent
+                if (group.id.isNotEmpty() && event.action == android.view.KeyEvent.ACTION_UP &&
+                    (event.keyCode == android.view.KeyEvent.KEYCODE_MENU ||
+                        (event.keyCode == android.view.KeyEvent.KEYCODE_F10 && event.isShiftPressed))) {
+                    onMenu(); true
+                } else false
+            }
+            .combinedClickable(
+                role = Role.Tab,
+                onClick = onClick,
+                onLongClickLabel = menuLabel.takeIf { group.id.isNotEmpty() },
+                onLongClick = onMenu.takeIf { group.id.isNotEmpty() },
+            )
             .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically

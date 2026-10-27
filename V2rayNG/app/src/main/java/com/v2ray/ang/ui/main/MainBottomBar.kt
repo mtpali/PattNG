@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -82,6 +83,20 @@ fun MainBottomBar(
                     }
                 )
             }
+        }
+        SmallFloatingActionButton(
+            onClick = { onAction(MainAction.LocateSelectedServer) },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 32.dp)
+                .offset(y = (-84).dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_locate_selected),
+                contentDescription = stringResource(R.string.title_locate_selected_config),
+                modifier = Modifier.size(22.dp),
+            )
         }
         FloatingActionButton(
             onClick = {

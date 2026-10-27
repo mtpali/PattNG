@@ -35,6 +35,9 @@ fun Long.toTrafficString(): String {
     return String.format(Locale.getDefault(), "%.1f %s", size, units[unitIndex])
 }
 
+/** A single usage figure, without a redundant decimal for whole values. */
+fun Long.toCompactTrafficString(): String = coerceAtLeast(0).toTrafficString().replace(".0 ", " ")
+
 val URI.idnHost: String
     get() = host?.replace("[", "")?.replace("]", "").orEmpty()
 

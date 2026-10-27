@@ -2,12 +2,9 @@ package com.v2ray.ang.core
 
 import android.content.Context
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.dto.AetherEndpoint
 import com.v2ray.ang.dto.entities.ProfileItem
-import com.v2ray.ang.enums.AetherProtocol
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.handler.MmkvManager
-import com.v2ray.ang.handler.SpeedtestManager
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -40,10 +37,6 @@ object AetherDelayTester {
 
     /** No further attempt starts with less than this left; it could not tell anything. */
     private const val MIN_REQUEST_MS = 1_000L
-
-    /** Port every Cloudflare edge answers on TCP, whatever port the tunnel itself uses. */
-    private const val EDGE_TCP_PORT = 443
-    private const val REACH_TIMEOUT_MS = 1000
 
     /** Stored for "no result": the server row shows nothing instead of a stale or a failed number. */
     const val UNTESTED = 0L
@@ -139,26 +132,6 @@ object AetherDelayTester {
         if (!answers(port)) return null
         return LiveSession(arguments = null, port = port, listening = true)
     }
-
-    /**
-     * The cheap probe behind "TCP ping": a TCP connect to the pinned edge address instead of a
-     * full tunnel. It tells whether that edge is reachable, not whether the tunnel works, and a
-     * profile left to the scanner has nothing to probe.
-     */
-    fun reachability(
-        profile: ProfileItem,
-        connect: (host: String, port: Int) -> Long = { host, port -> SpeedtestManager.socketConnectTime(host, port, REACH_TIMEOUT_MS) },
-    ): Long {
-        val host = probeHost(profile) ?: return UNTESTED
-        return connect(host, EDGE_TCP_PORT)
-    }
-
-    internal fun probeHost(profile: ProfileItem): String? =
-        if (AetherProtocol.fromString(profile.aetherProtocol).twoHops) {
-            AetherEndpoint.parse(profile.aetherWiwOuter)?.host
-        } else {
-            AetherEndpoint.of(profile.server, profile.serverPort)?.host
-        }
 
     /**
      * Where a test goes: through the live session for the core it runs, on the port the test dials and

@@ -19,6 +19,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.Collator
 
@@ -47,9 +51,18 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
     val bypassApps: StateFlow<Boolean> = _bypassApps.asStateFlow()
 
     // Cached full list for filtering
-    private var appsAll: List<AppInfo>? = null
-    private var currentQuery = ""
+    private val allApps = MutableStateFlow<List<AppInfo>?>(null)
+    private val query = MutableStateFlow("")
     private var isAppListLoading = false
+
+    init {
+        viewModelScope.launch {
+            combine(allApps, query) { apps, term -> apps.orEmpty() to term }
+                .collectLatest { (apps, term) ->
+                    _displayedApps.value = withContext(Dispatchers.Default) { filterPerAppApps(apps, term) }
+                }
+        }
+    }
 
     // Blacklist operations
     fun toggle(packageName: String) {
@@ -91,18 +104,14 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
 
     // Load and filter apps
     fun loadApps(context: Context) {
-        if (appsAll != null || isAppListLoading) return
+        if (allApps.value != null || isAppListLoading) return
 
         val applicationContext = context.applicationContext
         isAppListLoading = true
         launchLoading {
             try {
-                val apps = withContext(Dispatchers.IO) {
-                    val list = AppManagerUtil.loadNetworkAppList(applicationContext)
-                    sortApps(list)
-                }
-                appsAll = apps
-                _displayedApps.value = applyFilter(currentQuery)
+                val list = AppManagerUtil.loadNetworkAppList(applicationContext)
+                allApps.value = withContext(Dispatchers.Default) { sortPerAppApps(list, _blacklist.value) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -114,34 +123,7 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
     }
 
     fun filterApps(query: String) {
-        currentQuery = query
-        _displayedApps.value = applyFilter(query)
-    }
-
-    private fun applyFilter(query: String): List<AppInfo> {
-        val apps = appsAll ?: return emptyList()
-        if (query.isEmpty()) return apps
-
-        return apps.filter {
-            it.appName.contains(query, ignoreCase = true) ||
-                    it.packageName.contains(query, ignoreCase = true)
-        }
-    }
-
-    private fun sortApps(apps: List<AppInfo>): List<AppInfo> {
-        val collator = Collator.getInstance()
-        val selectedPackages = _blacklist.value
-        return apps.sortedWith { p1, p2 ->
-            val s1 = p1.packageName in selectedPackages
-            val s2 = p2.packageName in selectedPackages
-            when {
-                s1 && !s2 -> -1
-                !s1 && s2 -> 1
-                p1.isSystemApp && !p2.isSystemApp -> 1
-                !p1.isSystemApp && p2.isSystemApp -> -1
-                else -> collator.compare(p1.appName, p2.appName)
-            }
-        }
+        this.query.value = query
     }
 
     // Bulk actions
@@ -230,7 +212,7 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
     }
 
     private suspend fun applyProxyAppList(content: String, context: Context, forceGoogleApps: Boolean): Boolean {
-        val installedApps = appsAll ?: return false
+        val installedApps = allApps.value ?: return false
 
         try {
             val proxyAppList = if (content.isEmpty()) {
@@ -262,5 +244,25 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
     private fun enablePerAppProxyAndRestart() {
         setPerAppProxyEnabled(true)
         SettingsChangeManager.makeRestartService()
+    }
+}
+
+/** Pure list transforms run on Default; package discovery and label I/O stay in AppManagerUtil. */
+internal fun filterPerAppApps(apps: List<AppInfo>, query: String): List<AppInfo> {
+    val term = query.trim()
+    return if (term.isEmpty()) apps else apps.filter {
+        it.appName.contains(term, ignoreCase = true) || it.packageName.contains(term, ignoreCase = true)
+    }
+}
+
+internal fun sortPerAppApps(apps: List<AppInfo>, selected: Set<String>): List<AppInfo> {
+    val collator = Collator.getInstance()
+    return apps.sortedWith { first, second ->
+        when {
+            (first.packageName in selected) != (second.packageName in selected) ->
+                if (first.packageName in selected) -1 else 1
+            first.isSystemApp != second.isSystemApp -> if (first.isSystemApp) 1 else -1
+            else -> collator.compare(first.appName, second.appName)
+        }
     }
 }

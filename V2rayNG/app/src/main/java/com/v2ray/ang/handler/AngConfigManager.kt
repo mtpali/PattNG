@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.text.TextUtils
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.AngApplication
+import com.v2ray.ang.R
 import com.v2ray.ang.core.CoreConfigManager
 import com.v2ray.ang.core.TlsSettingsCheck
 import com.v2ray.ang.dto.SubscriptionUpdateResult
@@ -224,14 +226,15 @@ object AngConfigManager {
                 return 0
             }
 
+            val existing = MmkvManager.decodeSubscriptions()
+            val existingUrls = existing.map { it.subscription.url }.toSet()
+            val urls = servers.lineSequence().map(String::trim).distinct()
+                .filter { Utils.isValidSubUrl(it) && it !in existingUrls }.toList()
+            val titles = urls.map { URI(Utils.fixIllegalUrl(it)).fragment }
+            val names = subscriptionImportNames(titles, existing.map { it.subscription.remarks }.toSet(),
+                AngApplication.application.getString(R.string.default_subscription_name))
             var count = 0
-            servers.lines()
-                .distinct()
-                .forEach { str ->
-                    if (Utils.isValidSubUrl(str)) {
-                        count += importUrlAsSubscription(str)
-                    }
-                }
+            urls.forEachIndexed { index, url -> count += importUrlAsSubscription(url, names[index]) }
             return count
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to parse batch subscription", e)
@@ -639,16 +642,9 @@ object AngConfigManager {
      * @param url The URL.
      * @return The number of subscriptions imported.
      */
-    private fun importUrlAsSubscription(url: String): Int {
-        val subscriptions = MmkvManager.decodeSubscriptions()
-        subscriptions.forEach {
-            if (it.subscription.url == url) {
-                return 0
-            }
-        }
-        val uri = URI(Utils.fixIllegalUrl(url))
+    private fun importUrlAsSubscription(url: String, name: String): Int {
         val subItem = SubscriptionItem()
-        subItem.remarks = uri.fragment ?: "import sub"
+        subItem.remarks = name
         subItem.url = url
         // PattNG: stored and listed in one hold of the profile index lock, checked; a refusal is logged there.
         return if (MmkvManager.tryEncodeSubscription("", subItem) != null) 1 else 0
@@ -673,5 +669,21 @@ object AngConfigManager {
         } ?: ""
 
         return "$addrPart : ${port ?: ""}"
+    }
+}
+
+/** Imported names are user data: preserve explicit titles and reserve defaults across the batch. */
+internal fun subscriptionImportNames(titles: List<String?>, existing: Set<String>, baseName: String): List<String> {
+    val reserved = (existing + titles.filterNotNull().filter { it.isNotBlank() }).toMutableSet()
+    val numbered = titles.count { it.isNullOrBlank() } > 1
+    var next = 1
+    return titles.map { title ->
+        if (!title.isNullOrBlank()) title
+        else if (!numbered && reserved.add(baseName)) baseName
+        else {
+            var candidate: String
+            do { candidate = "$baseName ${next++}" } while (!reserved.add(candidate))
+            candidate
+        }
     }
 }

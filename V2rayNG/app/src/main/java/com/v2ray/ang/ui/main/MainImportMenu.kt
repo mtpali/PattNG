@@ -28,17 +28,13 @@ private enum class ImportMenuAction(@StringRes val labelRes: Int, val action: Ma
 }
 
 enum class MainMoreMenuAction(@StringRes val labelRes: Int) {
-    RenameConfigs(R.string.title_rename_configs),
-    ResetUsage(R.string.title_reset_profile_usage),
-    RestartService(R.string.title_service_restart),
     DeleteAll(R.string.title_del_all_config),
     DeleteDuplicate(R.string.title_del_duplicate_config),
     DeleteInvalid(R.string.title_del_invalid_config),
+    ResetUsage(R.string.title_reset_profile_usage),
     ExportAll(R.string.title_export_all),
-    LocateSelected(R.string.title_locate_selected_config),
-    SortByTestResults(R.string.title_sort_by_test_results),
-    TestAll(R.string.title_ping_all_server),
     TestAllRealPing(R.string.title_real_ping_all_server),
+    SortByTestResults(R.string.title_sort_by_test_results),
     UpdateSubscriptions(R.string.title_sub_update)
 }
 

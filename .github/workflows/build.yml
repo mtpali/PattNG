@@ -77,8 +77,8 @@ jobs:
         run: |
           printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
           chmod +x gradlew
-          ./gradlew :app:testPlaystoreDebugUnitTest --tests 'com.v2ray.ang.core.PolicyGroupGeoIpTest' --tests 'com.v2ray.ang.core.ServiceToggleTest' --tests 'com.v2ray.ang.service.ServiceLifecycleGateTest' --tests 'com.v2ray.ang.fmt.WireguardFmtTest' --tests 'com.v2ray.ang.handler.SubscriptionProfilesTest' --tests 'com.v2ray.ang.handler.SubscriptionMutationTest' -PABI_FILTERS=arm64-v8a --no-daemon
-          ./gradlew :app:testPlaystoreDebugUnitTest :app:compilePlaystoreDebugKotlin :app:assemblePlaystoreDebug :app:assemblePlaystoreRelease :app:lintPlaystoreDebug -PABI_FILTERS=arm64-v8a --no-daemon
+          ./gradlew :app:testPlaystoreDebugUnitTest --tests 'com.v2ray.ang.ui.main.MainSubscriptionInfoTest' --tests 'com.v2ray.ang.core.ProfileTrafficTest' --tests 'com.v2ray.ang.handler.SubscriptionImportNamesTest' --tests 'com.v2ray.ang.handler.RetiredBackupMigrationTest' --tests 'com.v2ray.ang.ui.perappproxy.PerAppListTest' --tests 'com.v2ray.ang.util.AppManagerUtilTest' --tests 'com.v2ray.ang.core.AetherDelayTesterTest' -PABI_FILTERS=arm64-v8a --no-daemon
+          ./gradlew :app:testPlaystoreDebugUnitTest :app:compilePlaystoreDebugKotlin :app:assemblePlaystoreDebug :app:assemblePlaystoreRelease :app:lintPlaystoreDebug :app:testFdroidDebugUnitTest :app:compileFdroidDebugKotlin :app:assembleFdroidDebug :app:lintFdroidDebug -PABI_FILTERS=arm64-v8a --no-daemon
       - name: Verify APK architecture and R8 outputs
         run: |
           python3 - <<'PYAPK'
@@ -95,6 +95,17 @@ jobs:
           assert (base / 'mapping/playstoreRelease/mapping.txt').is_file()
           assert (base / 'mapping/playstoreRelease/usage.txt').is_file()
           PYAPK
+      - name: Collect package verification tools
+        run: |
+          mkdir -p verification-tools/lib
+          cp "$ANDROID_HOME/build-tools/37.0.0/aapt2" "$ANDROID_HOME/build-tools/37.0.0/zipalign" "$ANDROID_HOME/build-tools/37.0.0/apksigner" verification-tools/
+          cp "$ANDROID_HOME/build-tools/37.0.0/lib/apksigner.jar" verification-tools/lib/
+          if [ -d "$ANDROID_HOME/build-tools/37.0.0/lib64" ]; then cp -r "$ANDROID_HOME/build-tools/37.0.0/lib64" verification-tools/; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-verification-tools
+          if-no-files-found: error
+          path: verification-tools/
       - uses: actions/upload-artifact@v7
         with:
           name: PattNG-arm64-release-unsigned

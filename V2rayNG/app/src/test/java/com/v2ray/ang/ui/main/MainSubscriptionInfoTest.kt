@@ -37,6 +37,7 @@ class MainSubscriptionInfoTest {
     fun expiryIsConvertedToMillisAndFlaggedWhenPast() {
         val future = buildSubscriptionInfoUiModel(SubscriptionUsageInfo(expire = now / 1000 + 60), now)
         assertEquals(now + 60_000, future.expireMillis)
+        assertEquals(1L, future.remainingDays)
         assertFalse(future.expired)
         assertTrue(buildSubscriptionInfoUiModel(SubscriptionUsageInfo(expire = now / 1000 - 1), now).expired)
     }
@@ -45,6 +46,24 @@ class MainSubscriptionInfoTest {
     fun zeroExpireMeansNeverExpires() {
         val model = buildSubscriptionInfoUiModel(SubscriptionUsageInfo(expire = 0), now)
         assertNull(model.expireMillis)
+        assertNull(model.remainingDays)
+        assertFalse(model.expired)
+    }
+
+    @Test
+    fun remainingDaysRoundUpPartialDaysAndClampExpiredToZero() {
+        val day = 86_400L
+        assertEquals(2L, buildSubscriptionInfoUiModel(SubscriptionUsageInfo(expire = now / 1000 + 2 * day), now).remainingDays)
+        assertEquals(3L, buildSubscriptionInfoUiModel(SubscriptionUsageInfo(expire = now / 1000 + 2 * day + 1), now).remainingDays)
+        assertEquals(0L, buildSubscriptionInfoUiModel(SubscriptionUsageInfo(expire = now / 1000), now).remainingDays)
+        assertEquals(0L, buildSubscriptionInfoUiModel(SubscriptionUsageInfo(expire = now / 1000 - day), now).remainingDays)
+        assertNull(buildSubscriptionInfoUiModel(SubscriptionUsageInfo(expire = -1), now).remainingDays)
+    }
+
+    @Test
+    fun veryLargeExpiryDoesNotOverflowIntoAnExpiredDate() {
+        val model = buildSubscriptionInfoUiModel(SubscriptionUsageInfo(expire = Long.MAX_VALUE), now)
+        assertTrue(model.remainingDays!! > 0L)
         assertFalse(model.expired)
     }
 }

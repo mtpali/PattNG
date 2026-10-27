@@ -198,16 +198,12 @@ fun MainScreen(
                     onAction = onAction,
                     onMoreMenuAction = { action ->
                         when (action) {
-                            MainMoreMenuAction.RenameConfigs -> onAction(MainAction.ShowGroupDialog(uiState.selectedGroupId, GroupDialogKind.Profiles))
                             MainMoreMenuAction.ResetUsage -> onAction(MainAction.ShowGroupDialog("", GroupDialogKind.ResetUsage))
-                            MainMoreMenuAction.RestartService -> onAction(MainAction.RestartService)
                             MainMoreMenuAction.DeleteAll -> showDelAllConfirm = true
                             MainMoreMenuAction.DeleteDuplicate -> showDelDuplicateConfirm = true
                             MainMoreMenuAction.DeleteInvalid -> showDelInvalidConfirm = true
                             MainMoreMenuAction.ExportAll -> onAction(MainAction.ExportAll)
-                            MainMoreMenuAction.LocateSelected -> onAction(MainAction.LocateSelectedServer)
                             MainMoreMenuAction.SortByTestResults -> onAction(MainAction.SortByTestResults)
-                            MainMoreMenuAction.TestAll -> onAction(MainAction.TestAllServers)
                             MainMoreMenuAction.TestAllRealPing -> onAction(MainAction.TestRealAllServers)
                             MainMoreMenuAction.UpdateSubscriptions -> onAction(MainAction.UpdateSubscriptions)
                         }
@@ -283,7 +279,7 @@ fun MainScreen(
                                 start = 0.dp,
                                 top = 0.dp,
                                 end = 0.dp,
-                                bottom = 80.dp
+                                bottom = 112.dp
                             )
                         )
                     }

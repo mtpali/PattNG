@@ -1,7 +1,5 @@
 package com.v2ray.ang.ui.main
 
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -24,13 +22,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.onLongClick
-import androidx.compose.ui.semantics.semantics
 import com.v2ray.ang.R
-import kotlin.math.abs
 
 // PullToRefreshBox is experimental in the pinned Material 3 BOM. Its state stays
 // inside this presentation boundary; remove the opt-in when the API is stable.
@@ -107,61 +100,4 @@ internal fun CustomizationDialogs(state: MainUiState, onAction: (MainAction) -> 
             dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
-}
-
-/** A short hold then motion reorders; a stationary Android long press opens actions immediately. */
-internal fun Modifier.subscriptionGestures(id: String, label: String, onMenu: () -> Unit, onMove: (Int) -> Unit): Modifier {
-    if (id.isEmpty()) return this
-    return semantics { onLongClick(label) { onMenu(); true } }
-        .onPreviewKeyEvent {
-            val event = it.nativeKeyEvent
-            if (event.action == android.view.KeyEvent.ACTION_UP &&
-                (event.keyCode == android.view.KeyEvent.KEYCODE_MENU ||
-                    (event.keyCode == android.view.KeyEvent.KEYCODE_F10 && event.isShiftPressed))) {
-                onMenu(); true
-            } else false
-        }
-        .pointerInput(id) {
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false)
-                var last = down.position
-                var elapsed = 0L
-                var distance = 0f
-                var dragging = false
-                while (true) {
-                    val event = if (dragging) awaitPointerEvent() else withTimeoutOrNull(
-                        (viewConfiguration.longPressTimeoutMillis - elapsed).coerceAtLeast(1L)
-                    ) { awaitPointerEvent() }
-                    if (event == null) {
-                        down.consume()
-                        onMenu()
-                        do {
-                            val released = awaitPointerEvent()
-                            released.changes.forEach { it.consume() }
-                        } while (released.changes.any { it.pressed })
-                        break
-                    }
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    if (!change.pressed) break
-                    val dx = change.position.x - last.x
-                    elapsed = change.uptimeMillis - down.uptimeMillis
-                    if (!dragging && (change.isConsumed ||
-                        (elapsed < android.view.ViewConfiguration.getTapTimeout() &&
-                            (change.position - down.position).getDistance() > viewConfiguration.touchSlop))) break
-                    if (elapsed >= android.view.ViewConfiguration.getTapTimeout()) {
-                        distance += dx
-                        if (abs(distance) > viewConfiguration.touchSlop) dragging = true
-                    }
-                    if (dragging) {
-                        change.consume()
-                        val step = 56 * density
-                        if (abs(distance) >= step) {
-                            onMove(if (distance > 0) 1 else -1)
-                            distance = 0f
-                        }
-                    }
-                    last = change.position
-                }
-            }
-        }
 }

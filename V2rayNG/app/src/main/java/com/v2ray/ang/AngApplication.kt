@@ -52,6 +52,11 @@ class AngApplication : Application() {
         // Ensure critical preference defaults are present in MMKV early
         SettingsManager.initApp(this)
         initializationScope.launch {
+            try {
+                MmkvManager.clearRetiredPreferences()
+            } catch (error: Exception) {
+                com.v2ray.ang.util.LogUtil.e(AppConfig.TAG, "Application: retired backup preference migration failed", error)
+            }
             MmkvManager.encodeSettings(AppConfig.PREF_IS_BOOTED, false)
             MmkvManager.encodeSettings(AppConfig.PREF_DOUBLE_COLUMN_DISPLAY, false)
             MmkvManager.encodeSettings(AppConfig.PREF_LANGUAGE, "en")

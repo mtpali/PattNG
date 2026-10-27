@@ -3,10 +3,21 @@ package com.v2ray.ang.core
 import com.google.gson.Gson
 import com.v2ray.ang.dto.entities.ProfileTraffic
 import com.v2ray.ang.dto.entities.TrafficSnapshot
+import com.v2ray.ang.extension.toCompactTrafficString
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class ProfileTrafficTest {
+    @Test fun combinesTrafficIntoOneCompactValueWithoutChangingTheStoredDirections() {
+        val traffic = ProfileTraffic(256 * 1024, 768 * 1024)
+        assertEquals(1048576L, traffic.totalBytes())
+        assertEquals("1 MB", traffic.totalBytes().toCompactTrafficString())
+        assertEquals("1.5 MB", (1572864L).toCompactTrafficString())
+        assertEquals("0 B", 0L.toCompactTrafficString())
+        assertEquals(Long.MAX_VALUE, ProfileTraffic(Long.MAX_VALUE, Long.MAX_VALUE).totalBytes())
+        assertEquals(7L, ProfileTraffic(-2, 7).totalBytes())
+        assertEquals(traffic, Gson().fromJson(Gson().toJson(traffic), ProfileTraffic::class.java))
+    }
     @Test fun unusedAndResetProfilesHaveNoVisibleUsage() {
         assertFalse(ProfileTraffic().hasUsage())
         assertFalse(ProfileTraffic(0, 0).hasUsage())

@@ -4,6 +4,11 @@ package com.v2ray.ang.dto.entities
 data class ProfileTraffic(val upload: Long = 0, val download: Long = 0) {
     fun hasUsage(): Boolean = upload > 0 || download > 0
 
+    fun totalBytes(): Long {
+        val up = upload.coerceAtLeast(0)
+        return up + download.coerceIn(0, Long.MAX_VALUE - up)
+    }
+
     fun add(up: Long, down: Long) = ProfileTraffic(sum(upload, up), sum(download, down))
     private fun sum(value: Long, delta: Long): Long =
         value + delta.coerceAtLeast(0).coerceAtMost(Long.MAX_VALUE - value)

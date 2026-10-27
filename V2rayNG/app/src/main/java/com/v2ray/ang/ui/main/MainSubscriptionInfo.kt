@@ -30,12 +30,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.SubscriptionUsageInfo
-import com.v2ray.ang.extension.toTrafficString
+import com.v2ray.ang.extension.toCompactTrafficString
 import com.v2ray.ang.handler.SubscriptionInfoParser
-import com.v2ray.ang.util.Utils
 
 private const val MILLIS_PER_SECOND = 1000L
-private const val EXPIRY_DATE_PATTERN = "yyyy-MM-dd"
+private const val MILLIS_PER_DAY = 86_400_000L
 private const val CARD_ALPHA = 0.97f
 
 /** Locale-neutral values the subscription information box renders. */
@@ -48,6 +47,7 @@ internal data class SubscriptionInfoUiModel(
     val trafficFraction: Float?,
     /** Expiry in epoch milliseconds; null when the subscription never expires. */
     val expireMillis: Long?,
+    val remainingDays: Long?,
     val expired: Boolean,
     val supportUrl: String?,
     val webPageUrl: String?,
@@ -64,13 +64,17 @@ internal fun buildSubscriptionInfoUiModel(
     nowMillis: Long,
 ): SubscriptionInfoUiModel {
     val unlimited = info.total <= 0L
-    val expireMillis = info.expire.takeIf { it > 0L }?.let { it * MILLIS_PER_SECOND }
+    val expireMillis = info.expire.takeIf { it > 0L }?.let {
+        it.coerceAtMost(Long.MAX_VALUE / MILLIS_PER_SECOND) * MILLIS_PER_SECOND
+    }
+    val remainingMillis = expireMillis?.let { (it - nowMillis.coerceAtLeast(0)).coerceAtLeast(0) }
     return SubscriptionInfoUiModel(
         title = info.title,
         usedBytes = info.used,
         totalBytes = if (unlimited) 0L else info.total,
         trafficFraction = if (unlimited) null else (info.used.toDouble() / info.total).toFloat().coerceIn(0f, 1f),
         expireMillis = expireMillis,
+        remainingDays = remainingMillis?.let { it / MILLIS_PER_DAY + if (it % MILLIS_PER_DAY == 0L) 0 else 1 },
         expired = expireMillis != null && expireMillis <= nowMillis,
         supportUrl = info.supportUrl,
         webPageUrl = info.webPageUrl,
@@ -87,9 +91,10 @@ internal fun SubscriptionInfoCard(
     fallbackTitle: String,
     onOpenLink: (String) -> Unit,
     onRefresh: () -> Unit,
+    nowMillis: Long,
     modifier: Modifier = Modifier,
 ) {
-    val model = remember(info) { buildSubscriptionInfoUiModel(info, System.currentTimeMillis()) }
+    val model = remember(info, nowMillis) { buildSubscriptionInfoUiModel(info, nowMillis) }
 
     Surface(
         modifier = modifier
@@ -170,24 +175,19 @@ private fun CardIconButton(iconRes: Int, contentDescription: String, onClick: ()
 
 @Composable
 private fun StatsRow(model: SubscriptionInfoUiModel) {
-    val totalText = if (model.totalBytes > 0L) {
-        model.totalBytes.toTrafficString()
-    } else {
-        stringResource(R.string.sub_info_unlimited)
-    }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(
-            text = stringResource(R.string.sub_info_traffic, model.usedBytes.toTrafficString(), totalText),
+            text = model.usedBytes.toCompactTrafficString(),
             modifier = Modifier.weight(1f, fill = false),
             style = MaterialTheme.typography.bodySmall,
             color = if (model.trafficLow) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        model.expireMillis?.let { expireMillis ->
+        model.remainingDays?.let { remainingDays ->
             Spacer(Modifier.size(8.dp))
             Text(
-                text = Utils.formatTimestamp(expireMillis, EXPIRY_DATE_PATTERN),
+                text = remainingDays.toString(),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (model.expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

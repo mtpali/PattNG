@@ -66,7 +66,6 @@ sealed interface MainAction {
     data object RefreshGroups : MainAction
     data object ToggleService : MainAction
     data object TestCurrentServer : MainAction
-    data object TestAllServers : MainAction
     data object TestRealAllServers : MainAction
     data object CancelTesting : MainAction
     data object RemoveAllServers : MainAction

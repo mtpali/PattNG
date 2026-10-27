@@ -45,15 +45,14 @@ enum class MainDestination(@DrawableRes val iconRes: Int, @StringRes val labelRe
     About(R.drawable.ic_about_24dp, R.string.title_about)
 }
 
-private val primaryDrawerItems = listOf(
+internal val drawerItems = listOf(
     MainDestination.Subscriptions,
     MainDestination.PerAppProxy,
     MainDestination.Routing,
     MainDestination.UserAssets,
-    MainDestination.Settings
+    MainDestination.Settings,
+    MainDestination.BackupRestore
 )
-
-private val drawerItems = primaryDrawerItems + MainDestination.BackupRestore
 
 @Composable
 fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) -> Unit, uiState: MainUiState, onAction: (MainAction) -> Unit) {
@@ -88,11 +87,7 @@ fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) ->
                     )
                 }
             }
-            DrawerToggle(stringResource(R.string.vpn_hotspot_label), uiState.vpnHotspot) { onAction(MainAction.SetVpnHotspot(it)) }
-            DrawerToggle(stringResource(R.string.root_mode_label), uiState.rootMode) { onAction(MainAction.SetRootMode(it)) }
-            AppDivider()
-            drawerItems.forEachIndexed { index, item ->
-                if (index == primaryDrawerItems.size) AppDivider()
+            drawerItems.forEach { item ->
                 NavigationDrawerItem(
                     label = { Text(stringResource(item.labelRes)) },
                     selected = false,
@@ -100,7 +95,11 @@ fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) ->
                     icon = { Icon(painterResource(item.iconRes), contentDescription = null) },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
+                AppDivider()
             }
+            DrawerToggle(stringResource(R.string.vpn_hotspot_label), uiState.vpnHotspot) { onAction(MainAction.SetVpnHotspot(it)) }
+            AppDivider()
+            DrawerToggle(stringResource(R.string.root_mode_label), uiState.rootMode) { onAction(MainAction.SetRootMode(it)) }
         }
     }
 }

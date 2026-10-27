@@ -14,7 +14,7 @@ import com.v2ray.ang.dto.TestServiceMessage
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.ServersCache
 import com.v2ray.ang.dto.entities.SubscriptionCache
-import com.v2ray.ang.extension.toTrafficString
+import com.v2ray.ang.extension.toCompactTrafficString
 import com.v2ray.ang.extension.delay
 import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.matchesPattern
@@ -90,6 +90,14 @@ class MainViewModel(
         )
     )
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+
+    // One clock for visible subscription cards; it stops when the screen is not observed.
+    val currentTimeMillis: StateFlow<Long> = kotlinx.coroutines.flow.flow {
+        while (currentCoroutineContext().isActive) {
+            emit(System.currentTimeMillis())
+            kotlinx.coroutines.delay(60_000L)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), System.currentTimeMillis())
 
     // ---------- Keyword filtering ----------
     @Volatile
@@ -366,7 +374,6 @@ class MainViewModel(
             MainAction.Initialize -> initialize()
             MainAction.RefreshServiceState -> { dataSource.queryServiceState(); refreshUsage() }
             MainAction.RefreshGroups -> setupGroupTab(forceRefresh = true)
-            MainAction.TestAllServers -> testAllRealPing(true)
             MainAction.TestRealAllServers -> testAllRealPing()
             MainAction.CancelTesting -> cancelAllPing()
             MainAction.RemoveAllServers -> removeAllServerAsync()
@@ -560,7 +567,7 @@ class MainViewModel(
 
     private fun usageLabel(guid: String, usage: Map<String, com.v2ray.ang.dto.entities.ProfileTraffic>): String? =
         usage[guid]?.takeIf { it.hasUsage() }?.let {
-            dataSource.getString(R.string.profile_usage, it.upload.toTrafficString(), it.download.toTrafficString())
+            it.totalBytes().toCompactTrafficString()
         }
 
     private fun customize(action: MainAction) {
@@ -1093,7 +1100,7 @@ class MainViewModel(
         }
     }
 
-    fun testAllRealPing(onlyTcp: Boolean = false) {
+    fun testAllRealPing() {
         cancelAllPing()
         val groupId = uiState.value.selectedGroupId
         val servers = currentServers()
@@ -1117,8 +1124,7 @@ class MainViewModel(
         val message = TestServiceMessage(
             key = AppConfig.MSG_MEASURE_CONFIG_START,
             subscriptionId = groupId,
-            serverGuids = if (keywordFilter.isNotEmpty()) serverGuids else emptyList(),
-            onlyTcp = onlyTcp
+            serverGuids = if (keywordFilter.isNotEmpty()) serverGuids else emptyList()
         )
         _uiState.update {
             it.copy(

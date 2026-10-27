@@ -121,7 +121,7 @@ class MainViewModelServersChangedTest {
         override fun getDoubleColumnDisplay() = false
         override fun isGroupAllDisplayEnabled() = showAllGroup
         override fun getString(resId: Int) = ""
-        override fun getString(resId: Int, vararg formatArgs: Any) = if (resId == R.string.profile_usage) formatArgs.joinToString(" / ") else ""
+        override fun getString(resId: Int, vararg formatArgs: Any) = ""
         override fun getStringArray(resId: Int) = emptyList<String>()
         override fun getSubscriptions() = buildList {
             if (showAllGroup) add(SubscriptionCache("", SubscriptionItem(remarks = "All")))
@@ -646,6 +646,7 @@ class MainViewModelServersChangedTest {
                 viewModel.serverGroupState(SUB).first { group -> group.rows.any { it.guid == "b" && it.usageText != null } }
             }
             assertNull(populated.rows.first { it.guid == "a" }.usageText)
+            assertEquals("3 KB", populated.rows.first { it.guid == "b" }.usageText)
             viewModel.onAction(MainAction.ResetProfileUsage)
             withTimeout(5_000) { while (source.resetCount == 0) delay(20) }
             source.events.send(MainServiceEvent.ProfileTrafficChanged)

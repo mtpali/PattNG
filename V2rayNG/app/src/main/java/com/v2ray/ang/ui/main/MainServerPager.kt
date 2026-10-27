@@ -142,8 +142,10 @@ fun GroupPagerPage(
             contentPadding = listPadding
         )
         if (usageInfo != null) {
+            val nowMillis by mainViewModel.currentTimeMillis.collectAsStateWithLifecycle()
             SubscriptionInfoCard(
                 info = usageInfo,
+                nowMillis = nowMillis,
                 fallbackTitle = groupTitle,
                 onOpenLink = onOpenLink,
                 onRefresh = { mainViewModel.onAction(MainAction.UpdateGroupSubscription(groupId)) },
